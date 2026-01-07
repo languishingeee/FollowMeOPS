@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Follow-Me Ops | Pro v16.7</title>
+    <title>Follow-Me Ops | Pro v16.8 (Final)</title>
     
     <!-- PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -40,10 +40,6 @@
                         'flashRed': {
                             '0%, 100%': { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.15)' },
                             '50%': { borderColor: 'transparent', backgroundColor: 'transparent' }
-                        },
-                        'glow': {
-                            'from': { boxShadow: '0 0 5px rgba(59, 130, 246, 0.2)' },
-                            'to': { boxShadow: '0 0 20px rgba(59, 130, 246, 0.6)' }
                         }
                     },
                     screens: { 'xs': '375px' }
@@ -129,6 +125,7 @@
 
     <div id="toastContainer" class="fixed top-24 right-4 left-4 md:left-auto md:right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
+    <!-- HEADER -->
     <header class="h-16 glass flex items-center justify-between px-4 md:px-8 z-50 shrink-0 border-b border-white/5 relative shadow-lg">
         <div class="flex items-center gap-3 cursor-pointer group" onclick="location.reload()">
             <div class="relative">
@@ -157,12 +154,14 @@
             <button onclick="app.ui.toggleMobileSearch()" class="lg:hidden w-9 h-9 rounded-xl hover:bg-white/10 text-gray-300 flex items-center justify-center border border-transparent transition">
                 <i class="fa-solid fa-search"></i>
             </button>
+
             <div class="relative group hidden lg:block">
                 <i class="fa-solid fa-search absolute left-4 top-2.5 text-gray-500 group-focus-within:text-blue-400 transition-colors text-xs"></i>
                 <input type="text" id="searchInput" placeholder="ARA..." 
                     class="bg-slate-900/50 border border-white/10 text-white text-xs rounded-xl block w-40 lg:w-48 pl-11 pr-8 py-2 focus:border-blue-500/50 focus:w-56 transition-all duration-300 outline-none font-mono uppercase placeholder-gray-600 shadow-inner">
                 <button id="clearSearchBtn" onclick="app.ui.clearSearch()" class="hidden absolute right-2 top-2 text-gray-500 hover:text-white p-1 rounded-full hover:bg-white/10 transition"><i class="fa-solid fa-times text-[10px]"></i></button>
             </div>
+
             <div class="flex items-center gap-1 bg-slate-900/40 p-1 rounded-xl border border-white/5 shadow-lg backdrop-blur-sm">
                 <button onclick="app.ui.toggleCompleted()" id="btnToggleCompleted" class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase text-gray-400 hover:text-white hover:bg-white/10 transition border border-transparent flex items-center gap-1.5" title="Geçmişi Gizle/Göster">
                     <i class="fa-solid fa-clock-rotate-left"></i> <span id="lblCompleted" class="hidden xl:inline">GİZLE</span>
@@ -211,7 +210,7 @@
         </div>
     </div>
 
-    <!-- Filter & Shift Bar (Sticky) -->
+    <!-- Sticky Filter Bar with Active Shift Info -->
     <div class="bg-[#020617]/95 backdrop-blur border-b border-white/5 p-3 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-0 z-40 shadow-xl overflow-x-auto no-scrollbar">
         <!-- Shift Info / Trigger -->
         <div class="flex items-center gap-2 cursor-pointer group shrink-0" onclick="app.ui.showShiftConfig()">
@@ -225,10 +224,10 @@
         </div>
 
         <!-- View Filters -->
-        <div class="flex items-center gap-2">
-            <button onclick="app.ui.setFilter('all')" id="filter-all" class="px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
-            <button onclick="app.ui.setFilter('focus')" id="filter-focus" class="px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Odak</button>
-            <button onclick="app.ui.setFilter('completed')" id="filter-completed" class="px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Biten</button>
+        <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+            <button onclick="app.ui.setFilter('all')" id="filter-all" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
+            <button onclick="app.ui.setFilter('focus')" id="filter-focus" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Odak</button>
+            <button onclick="app.ui.setFilter('completed')" id="filter-completed" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Bitenler</button>
         </div>
     </div>
 
@@ -245,8 +244,8 @@
         <div id="flightGrid" class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 pb-32 relative z-10 max-w-8xl mx-auto"></div>
     </main>
 
-    <footer class="h-12 glass border-t border-white/5 flex items-center justify-between px-4 md:px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest z-50">
-        <div class="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar w-full">
+    <footer class="h-14 glass border-t border-white/5 flex items-center justify-between px-4 md:px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest z-50">
+        <div class="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar w-full items-center">
             <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-list text-gray-400"></i><span class="hidden sm:inline">Toplam:</span><span id="statTotal" class="text-white">0</span></span>
             <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-eye text-blue-500"></i><span class="hidden sm:inline">Odak:</span><span id="statFocus" class="text-blue-400">0</span></span>
             <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-check-circle text-emerald-500"></i><span class="hidden sm:inline">Biten:</span><span id="statDone" class="text-emerald-400">0</span></span>
@@ -266,11 +265,14 @@
                 <p class="text-xs text-gray-400 mt-2">Vardiya türünü ve odak saatlerini belirleyin.</p>
             </div>
             <div class="p-6 space-y-6">
+                <!-- Shift Type Selection -->
                 <div class="grid grid-cols-3 gap-2">
                     <button onclick="app.ui.selectShiftType('day')" id="sc-btn-day" class="shift-btn active py-3 rounded-xl text-xs font-bold uppercase bg-white/5 hover:bg-white/10 text-gray-400">Gündüz</button>
                     <button onclick="app.ui.selectShiftType('night')" id="sc-btn-night" class="shift-btn py-3 rounded-xl text-xs font-bold uppercase bg-white/5 hover:bg-white/10 text-gray-400">Gece</button>
                     <button onclick="app.ui.selectShiftType('all')" id="sc-btn-all" class="shift-btn py-3 rounded-xl text-xs font-bold uppercase bg-white/5 hover:bg-white/10 text-gray-400">Tümü</button>
                 </div>
+
+                <!-- Custom Time Range -->
                 <div id="customTimeRange" class="space-y-2">
                     <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Odak Saat Aralığı</label>
                     <div class="flex items-center gap-3">
@@ -286,6 +288,7 @@
                     </div>
                     <p class="text-[10px] text-gray-500 italic mt-2 text-center">* Gece vardiyasında bitiş saati ertesi günü temsil eder.</p>
                 </div>
+
                 <button onclick="app.logic.applyShiftConfig()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 transition transform active:scale-95 uppercase tracking-wide text-sm">
                     Operasyonu Başlat
                 </button>
@@ -332,7 +335,7 @@
             <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed">Tüm veriler silinecek.</p>
             <div class="flex gap-3">
                 <button onclick="document.getElementById('confirmModal').classList.add('hidden')" class="flex-1 py-3 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl font-bold text-xs uppercase transition tracking-wider border border-white/5">Vazgeç</button>
-                <button onclick="app.data.reset()" class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-red-600/30 transition tracking-wider transform hover:scale-[1.02]">TEMİZLE</button>
+                <button onclick="app.ui.smartReset()" class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-red-600/30 transition tracking-wider transform hover:scale-[1.02]">TEMİZLE</button>
             </div>
         </div>
     </div>
@@ -424,6 +427,27 @@
                    // This function is kept for compatibility but main update happens via label now
                 },
 
+                smartReset: () => {
+                    // Direct reset logic, called from modal button
+                    const currentStaff = app.state.staff;
+                    app.state = {
+                        flights: [],
+                        shift: 'day',
+                        customStart: 480, customEnd: 1200,
+                        staff: currentStaff,
+                        assignments: {},
+                        gates: {},
+                        overrides: {},
+                        completed: [],
+                        showCompleted: true,
+                        filterMode: 'all',
+                        baseDate: null
+                    };
+                    app.data.save(); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); 
+                    app.ui.toast("Sistem Temizlendi", "success");
+                    document.getElementById('confirmModal').classList.add('hidden');
+                },
+
                 render: () => {
                     const grid = document.getElementById('flightGrid'); if(!grid) return; grid.innerHTML = '';
                     const elSearch = document.getElementById('searchInput'); const term = elSearch ? elSearch.value.toLowerCase().replace(/\s+/g, '') : '';
@@ -459,19 +483,13 @@
                         const el = document.createElement('div');
                         el.className = `flight-card rounded-xl flex flex-col md:flex-row min-h-auto md:min-h-[100px] ${typeClass} ${inFocus && !isDone ? 'in-focus' : 'is-dimmed'} ${isDone ? 'is-completed' : ''} mb-3 md:mb-4 relative overflow-hidden`;
                         const completedOverlay = isDone ? `<div class="absolute right-4 top-2 z-50 pointer-events-none transform -rotate-12 opacity-60"><div class="border-2 border-slate-400 text-slate-300 font-display font-bold text-sm md:text-lg px-2 py-0.5 rounded-lg uppercase tracking-widest shadow-2xl backdrop-blur-sm">TAMAMLANDI</div></div>` : '';
-                        
-                        // NEW: Added explicit ARRIVAL / DEPARTURE labels below date
-                        const typeLabel = isArr ? 
-                            `<div class="text-[12px] font-bold text-emerald-400 mt-2 border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded text-center tracking-widest">İNİŞ</div>` : 
-                            `<div class="text-[12px] font-bold text-amber-400 mt-2 border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 rounded text-center tracking-widest">KALKIŞ</div>`;
-
                         el.innerHTML = `${completedOverlay}
                             <div class="w-full md:w-28 bg-black/20 flex flex-row md:flex-col items-center justify-between p-3 md:p-4 border-b md:border-b-0 md:border-r border-white/5 relative group">
                                 <div class="flex items-center gap-3 md:block md:text-center"><i class="fa-solid ${icon} ${iconColor} text-xl md:text-3xl drop-shadow-xl"></i><div class="md:hidden text-lg font-mono font-bold text-white">${f.timeStr}</div></div>
                                 <div class="text-right md:text-center">
                                     <div class="hidden md:block text-2xl md:text-3xl font-mono font-bold text-white tracking-tighter leading-none">${f.timeStr}</div>
                                     <div class="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20 mt-1 uppercase text-center">${dateLabel}</div>
-                                    ${typeLabel}
+                                    <div class="text-[10px] font-extrabold ${isArr ? 'text-emerald-400' : 'text-amber-400'} tracking-widest mt-1 text-center border border-white/5 rounded bg-black/20 px-1">${isArr ? 'İNİŞ' : 'KALKIŞ'}</div>
                                 </div>
                             </div>
                             <div class="flex-1 p-3 md:p-4 flex flex-col justify-center relative pl-4 md:pl-5">
@@ -655,8 +673,8 @@
                 }
             },
             data: {
-                save: () => { localStorage.setItem('fm_v16_6', JSON.stringify(app.state)); const el = document.getElementById('saveStatus'); if(el) { el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); } },
-                load: () => { const s = localStorage.getItem('fm_v16_6'); if(s) { try { app.state = {...app.state, ...JSON.parse(s)}; app.ui.render(); app.ui.updateHeaderShiftLabel(); } catch(e){} } },
+                save: () => { localStorage.setItem('fm_v16_2', JSON.stringify(app.state)); const el = document.getElementById('saveStatus'); if(el) { el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); } },
+                load: () => { const s = localStorage.getItem('fm_v16_2'); if(s) { try { app.state = {...app.state, ...JSON.parse(s)}; app.ui.render(); app.ui.updateHeaderShiftLabel(); } catch(e){} } },
                 saveToJson: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(app.state)], {type:'application/json'})); a.download = `backup_${Date.now()}.json`; a.click(); },
                 loadFromJson: (input) => { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
                 reset: () => { app.ui.smartReset(); }
