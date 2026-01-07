@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Follow-Me Ops | Pro v14.5</title>
+    <title>Follow-Me Ops | Pro v16.0</title>
     
     <!-- PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,21 +29,20 @@
                     animation: {
                         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                         'slide-up': 'slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                        'glow': 'glow 2s ease-in-out infinite alternate'
+                        'glow': 'glow 2s ease-in-out infinite alternate',
+                        'flash-red': 'flashRed 1.5s infinite'
                     },
                     keyframes: {
                         'slide-up': {
                             '0%': { opacity: 0, transform: 'translateY(15px)' },
                             '100%': { opacity: 1, transform: 'translateY(0)' }
                         },
-                        'glow': {
-                            'from': { boxShadow: '0 0 5px rgba(59, 130, 246, 0.2)' },
-                            'to': { boxShadow: '0 0 20px rgba(59, 130, 246, 0.6)' }
+                        'flashRed': {
+                            '0%, 100%': { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.15)' },
+                            '50%': { borderColor: 'transparent', backgroundColor: 'transparent' }
                         }
                     },
-                    screens: {
-                        'xs': '375px', 
-                    }
+                    screens: { 'xs': '375px' }
                 }
             }
         }
@@ -107,21 +106,26 @@
         .is-completed { opacity: 0.5; filter: grayscale(1) contrast(0.8); border-left-color: #64748b !important; background: rgba(15, 23, 42, 0.5); }
 
         .gate-input-wrapper:focus-within { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
-        .gate-changed { animation: pulse-red 2s infinite; border-color: #ef4444 !important; background: rgba(239, 68, 68, 0.1) !important; }
-        @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.5) inset; } 50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8) inset; } }
+        .gate-changed { animation: flash-red 1.5s infinite; border-color: #ef4444 !important; background: rgba(239, 68, 68, 0.1) !important; }
+        @keyframes flash-red { 0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.5) inset; } 50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8) inset; } }
 
         @media screen and (max-width: 768px) { input, select, textarea { font-size: 16px !important; } }
         input.ghost { background: transparent; border: none; outline: none; width: 100%; color: inherit; }
         input.ghost::placeholder { color: rgba(255,255,255,0.2); font-weight: 500; }
 
-        /* Report Canvas - Fixed visibility for html2canvas */
-        #reportCapture { position: fixed; left: 0; top: 0; width: 1200px; height: 675px; background: #0f172a; z-index: -100; visibility: visible; }
+        /* Report Canvas */
+        #reportCapture { position: fixed; top: 0; left: 0; width: 1200px; height: 675px; background: #0f172a; z-index: -100; visibility: visible; pointer-events: none; }
+        
+        /* Shift Modal specific */
+        .shift-btn { transition: all 0.2s; border: 1px solid rgba(255,255,255,0.1); }
+        .shift-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
     </style>
 </head>
 <body class="flex flex-col h-screen text-gray-200 overflow-hidden">
 
     <div id="toastContainer" class="fixed top-24 right-4 left-4 md:left-auto md:right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
+    <!-- HEADER -->
     <header class="h-16 glass flex items-center justify-between px-4 md:px-8 z-50 shrink-0 border-b border-white/5 relative shadow-lg">
         <div class="flex items-center gap-3 cursor-pointer group" onclick="location.reload()">
             <div class="relative">
@@ -152,7 +156,8 @@
             </button>
             <div class="relative group hidden lg:block">
                 <i class="fa-solid fa-search absolute left-4 top-2.5 text-gray-500 group-focus-within:text-blue-400 transition-colors text-xs"></i>
-                <input type="text" id="searchInput" placeholder="ARA..." class="bg-slate-900/50 border border-white/10 text-white text-xs rounded-xl block w-40 lg:w-48 pl-11 pr-8 py-2 focus:border-blue-500/50 focus:w-56 transition-all duration-300 outline-none font-mono uppercase placeholder-gray-600 shadow-inner">
+                <input type="text" id="searchInput" placeholder="ARA..." 
+                    class="bg-slate-900/50 border border-white/10 text-white text-xs rounded-xl block w-40 lg:w-48 pl-11 pr-8 py-2 focus:border-blue-500/50 focus:w-56 transition-all duration-300 outline-none font-mono uppercase placeholder-gray-600 shadow-inner">
                 <button id="clearSearchBtn" onclick="app.ui.clearSearch()" class="hidden absolute right-2 top-2 text-gray-500 hover:text-white p-1 rounded-full hover:bg-white/10 transition"><i class="fa-solid fa-times text-[10px]"></i></button>
             </div>
             <div class="flex items-center gap-1 bg-slate-900/40 p-1 rounded-xl border border-white/5 shadow-lg backdrop-blur-sm">
@@ -171,7 +176,8 @@
     <div id="mobileSearch" class="hidden absolute top-16 left-0 w-full bg-[#0f172a] border-b border-white/10 p-3 z-40 animate-slide-down">
         <div class="relative">
             <i class="fa-solid fa-search absolute left-4 top-3 text-gray-500"></i>
-            <input type="text" id="searchInputMobile" placeholder="UÇUŞ ARA (VF1054...)" class="w-full bg-slate-900 border border-white/10 rounded-xl py-2.5 pl-10 pr-10 text-white text-base focus:border-blue-500 outline-none font-mono uppercase">
+            <input type="text" id="searchInputMobile" placeholder="UÇUŞ ARA (VF1054...)" 
+                class="w-full bg-slate-900 border border-white/10 rounded-xl py-2.5 pl-10 pr-10 text-white text-base focus:border-blue-500 outline-none font-mono uppercase">
             <button onclick="app.ui.toggleMobileSearch()" class="absolute right-3 top-2.5 text-gray-400 hover:text-white p-1"><i class="fa-solid fa-times"></i></button>
         </div>
     </div>
@@ -202,17 +208,24 @@
         </div>
     </div>
 
-    <div class="bg-[#020617]/95 backdrop-blur border-b border-white/5 p-3 flex flex-col md:flex-row justify-center items-center gap-3 sticky top-0 z-40 shadow-xl">
-        <div class="glass p-1 rounded-xl flex relative w-full max-w-md shadow-inner bg-slate-900/50 h-10 md:h-12">
-            <div id="shiftIndicator" class="absolute top-1 bottom-1 w-1/3 bg-blue-600 rounded-lg shadow-lg transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-0"></div>
-            <button onclick="app.logic.setShift('day')" id="shift-day" class="flex-1 relative z-10 py-1 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-2 uppercase tracking-wider"><i class="fa-regular fa-sun text-sm"></i> Gündüz</button>
-            <button onclick="app.logic.setShift('night')" id="shift-night" class="flex-1 relative z-10 py-1 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-2 uppercase tracking-wider"><i class="fa-solid fa-moon text-sm"></i> Gece</button>
-            <button onclick="app.logic.setShift('all')" id="shift-all" class="flex-1 relative z-10 py-1 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-2 uppercase tracking-wider"><i class="fa-solid fa-layer-group text-sm"></i> Tümü</button>
+    <!-- Sticky Filter Bar with Active Shift Info -->
+    <div class="bg-[#020617]/95 backdrop-blur border-b border-white/5 p-3 flex justify-between items-center gap-3 sticky top-0 z-40 shadow-xl overflow-x-auto no-scrollbar">
+        <!-- Shift Info / Trigger -->
+        <div class="flex items-center gap-2 cursor-pointer group" onclick="app.ui.showShiftConfig()">
+            <div class="w-8 h-8 rounded-lg bg-blue-600/10 border border-blue-600/30 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition">
+                <i class="fa-solid fa-sliders"></i>
+            </div>
+            <div class="flex flex-col">
+                <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">AKTİF VARDİYA</span>
+                <span id="activeShiftLabel" class="text-xs font-bold text-white uppercase tracking-wide group-hover:text-blue-400 transition">VARDİYA YOK</span>
+            </div>
         </div>
-        <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar">
-            <button onclick="app.ui.setFilter('all')" id="filter-all" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
-            <button onclick="app.ui.setFilter('focus')" id="filter-focus" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Odak</button>
-            <button onclick="app.ui.setFilter('completed')" id="filter-completed" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Bitenler</button>
+
+        <!-- View Filters -->
+        <div class="flex items-center gap-2">
+            <button onclick="app.ui.setFilter('all')" id="filter-all" class="px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
+            <button onclick="app.ui.setFilter('focus')" id="filter-focus" class="px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Odak</button>
+            <button onclick="app.ui.setFilter('completed')" id="filter-completed" class="px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Biten</button>
         </div>
     </div>
 
@@ -222,15 +235,15 @@
                 <div class="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-50"></div>
                 <div class="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 ring-1 ring-blue-500/30 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative z-10"><i class="fa-solid fa-tower-broadcast text-4xl text-blue-500 animate-pulse"></i></div>
                 <h2 class="text-xl md:text-2xl font-display font-bold text-white mb-2 tracking-wide relative z-10">Vardiya Bekleniyor</h2>
-                <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed relative z-10">Günlük operasyon listesini yükleyerek<br>sistemi aktif hale getirin.</p>
+                <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed relative z-10">Excel dosyasını yükleyerek başlayın.</p>
                 <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-xl shadow-blue-600/20 active:scale-95 relative z-10"><i class="fa-solid fa-cloud-arrow-up"></i><span>DOSYA SEÇ</span><input type="file" onchange="app.logic.handleFileUpload(event)" class="hidden" accept=".xlsx, .csv"></label>
             </div>
         </div>
         <div id="flightGrid" class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 pb-32 relative z-10 max-w-8xl mx-auto"></div>
     </main>
 
-    <footer class="h-12 glass border-t border-white/5 flex items-center justify-between px-4 md:px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest z-50">
-        <div class="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar w-full">
+    <footer class="h-14 glass border-t border-white/5 flex items-center justify-between px-4 md:px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest z-50">
+        <div class="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar w-full items-center">
             <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-list text-gray-400"></i><span class="hidden sm:inline">Toplam:</span><span id="statTotal" class="text-white">0</span></span>
             <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-eye text-blue-500"></i><span class="hidden sm:inline">Odak:</span><span id="statFocus" class="text-blue-400">0</span></span>
             <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-check-circle text-emerald-500"></i><span class="hidden sm:inline">Biten:</span><span id="statDone" class="text-emerald-400">0</span></span>
@@ -238,6 +251,48 @@
         </div>
         <div id="saveStatus" class="opacity-0 transition-opacity text-emerald-500 flex items-center gap-2 font-bold tracking-wider hidden md:flex"><i class="fa-solid fa-floppy-disk animate-bounce"></i> <span>KAYITLI</span></div>
     </footer>
+
+    <!-- MODALS -->
+
+    <!-- Shift Config Modal -->
+    <div id="shiftConfigModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-md z-[110] flex items-center justify-center p-4 transition-opacity">
+        <div class="glass bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-slide-up border border-white/10">
+            <div class="p-6 text-center border-b border-white/5">
+                <div class="w-16 h-16 bg-blue-600/10 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fa-solid fa-calendar-check text-3xl text-blue-500"></i></div>
+                <h3 class="font-display font-bold text-2xl text-white">Vardiya Planlama</h3>
+                <p class="text-xs text-gray-400 mt-2">Vardiya türünü ve odak saatlerini belirleyin.</p>
+            </div>
+            <div class="p-6 space-y-6">
+                <!-- Shift Type Selection -->
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="app.ui.selectShiftType('day')" id="sc-btn-day" class="shift-btn active py-3 rounded-xl text-xs font-bold uppercase bg-white/5 hover:bg-white/10 text-gray-400">Gündüz</button>
+                    <button onclick="app.ui.selectShiftType('night')" id="sc-btn-night" class="shift-btn py-3 rounded-xl text-xs font-bold uppercase bg-white/5 hover:bg-white/10 text-gray-400">Gece</button>
+                    <button onclick="app.ui.selectShiftType('all')" id="sc-btn-all" class="shift-btn py-3 rounded-xl text-xs font-bold uppercase bg-white/5 hover:bg-white/10 text-gray-400">Tümü</button>
+                </div>
+
+                <!-- Custom Time Range -->
+                <div id="customTimeRange" class="space-y-2">
+                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Odak Saat Aralığı</label>
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 bg-black/30 rounded-xl border border-white/10 px-4 py-2 flex flex-col">
+                            <span class="text-[9px] text-gray-500 font-bold mb-1">BAŞLANGIÇ</span>
+                            <input type="time" id="sc-start" class="bg-transparent text-white font-mono font-bold text-lg outline-none" value="08:00">
+                        </div>
+                        <div class="text-gray-600"><i class="fa-solid fa-arrow-right"></i></div>
+                        <div class="flex-1 bg-black/30 rounded-xl border border-white/10 px-4 py-2 flex flex-col">
+                            <span class="text-[9px] text-gray-500 font-bold mb-1">BİTİŞ</span>
+                            <input type="time" id="sc-end" class="bg-transparent text-white font-mono font-bold text-lg outline-none" value="20:00">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-gray-500 italic mt-2 text-center">* Gece vardiyasında bitiş saati ertesi günü temsil eder.</p>
+                </div>
+
+                <button onclick="app.logic.applyShiftConfig()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 transition transform active:scale-95 uppercase tracking-wide text-sm">
+                    Operasyonu Başlat
+                </button>
+            </div>
+        </div>
+    </div>
 
     <div id="analysisModal" onclick="if(event.target === this) app.ui.toggleAnalysis()" class="hidden fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4 transition-opacity">
         <div class="glass bg-slate-900 rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh] border border-white/10">
@@ -272,10 +327,10 @@
         <div class="glass p-8 rounded-3xl text-center max-w-sm w-full animate-slide-up border border-red-500/30 shadow-[0_0_80px_rgba(239,68,68,0.2)] bg-[#0f172a]">
             <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500 ring-1 ring-red-500/40"><i class="fa-solid fa-triangle-exclamation text-3xl"></i></div>
             <h3 class="text-xl font-display font-bold text-white mb-2">Emin misiniz?</h3>
-            <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed">Tüm veriler silinecek.</p>
+            <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed">Mevcut vardiya verileri silinecek. Personel listeniz korunacaktır.</p>
             <div class="flex gap-3">
                 <button onclick="document.getElementById('confirmModal').classList.add('hidden')" class="flex-1 py-3 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl font-bold text-xs uppercase transition tracking-wider border border-white/5">Vazgeç</button>
-                <button onclick="app.data.reset()" class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-red-600/30 transition tracking-wider transform hover:scale-[1.02]">TEMİZLE</button>
+                <button onclick="app.data.smartReset()" class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-red-600/30 transition tracking-wider transform hover:scale-[1.02]">TEMİZLE</button>
             </div>
         </div>
     </div>
@@ -283,10 +338,35 @@
     <datalist id="staffOptions"></datalist>
 
     <script>
+        const downloadOrShare = async (blob, fileName, mimeType) => {
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (isMobile && navigator.share && navigator.canShare) {
+                try {
+                    const file = new File([blob], fileName, { type: mimeType });
+                    if (navigator.canShare({ files: [file] })) {
+                        await navigator.share({ files: [file], title: 'Follow-Me Rapor', text: 'Vardiya raporu.' });
+                        return true; 
+                    }
+                } catch (err) { console.warn('Share dismissed', err); }
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = fileName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            return false;
+        };
+
         const app = {
-            state: { flights: [], shift: 'all', staff: ['AHMET Y.', 'MEHMET K.', 'AYŞE D.', 'FATMA S.', 'CAN B.'], assignments: {}, gates: {}, overrides: {}, completed: [], showCompleted: true, filterMode: 'all', baseDate: null },
+            state: { 
+                flights: [], 
+                shift: 'day',
+                customStart: 480, // 08:00
+                customEnd: 1200, // 20:00
+                staff: ['AHMET Y.', 'MEHMET K.', 'AYŞE D.', 'FATMA S.', 'CAN B.'], 
+                assignments: {}, gates: {}, overrides: {}, completed: [], 
+                showCompleted: true, filterMode: 'all', baseDate: null 
+            },
             init: () => {
-                app.data.load(); app.ui.startClock(); app.ui.renderStaff(); app.ui.updateShiftUI(); app.ui.setFilter(app.state.filterMode); app.ui.updateCompletedBtn();
+                app.data.load(); app.ui.startClock(); app.ui.renderStaff(); app.ui.updateShiftUI(); app.ui.setFilter(app.state.filterMode); app.ui.updateCompletedBtn(); app.ui.updateHeaderShiftLabel();
                 const updateDate = () => { document.getElementById('liveDate').innerText = new Date().toLocaleDateString('tr-TR'); };
                 updateDate(); setInterval(updateDate, 60000);
                 const searchInput = document.getElementById('searchInput'); const searchInputMobile = document.getElementById('searchInputMobile');
@@ -296,9 +376,9 @@
             },
             ui: {
                 toast: (msg, type = 'info') => {
-                    const c = document.getElementById('toastContainer'); const d = document.createElement('div');
-                    const cls = { success: 'border-emerald-500 bg-emerald-500/20 shadow-emerald-500/10 text-emerald-200', error: 'border-red-500 bg-red-500/20 shadow-red-500/10 text-red-200', info: 'border-blue-500 bg-blue-500/20 shadow-blue-500/10 text-blue-200' };
-                    d.className = `p-3 rounded-xl border-l-4 backdrop-blur-xl shadow-2xl text-xs font-bold text-white animate-slide-in pointer-events-auto flex items-center gap-3 uppercase tracking-wide ${cls[type] || cls.info}`;
+                    const c = document.getElementById('toastContainer'); if(!c) return; const d = document.createElement('div');
+                    const cls = { success: 'border-emerald-500 bg-emerald-500/20 text-emerald-200', error: 'border-red-500 bg-red-500/20 text-red-200', info: 'border-blue-500 bg-blue-500/20 text-blue-200' };
+                    d.className = `p-3 rounded-xl border-l-4 backdrop-blur-xl shadow-2xl text-xs font-bold text-white animate-slide-up pointer-events-auto flex items-center gap-3 uppercase tracking-wide ${cls[type] || cls.info}`;
                     d.innerHTML = `<span>${msg}</span>`; c.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateY(-10px)'; setTimeout(() => d.remove(), 300); }, 3000);
                 },
                 startClock: () => { setInterval(() => { const now = new Date(); document.getElementById('liveClock').innerText = now.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }, 1000); },
@@ -312,59 +392,89 @@
                         else { btn.className = "px-4 md:px-6 py-1.5 md:py-2 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 hover:text-white border border-transparent hover:bg-white/5"; }
                     }); app.ui.render();
                 },
-                toggleMenu: () => document.getElementById('mainMenu').classList.toggle('hidden'),
+                toggleMenu: () => { const m = document.getElementById('mainMenu'); if(m) m.classList.toggle('hidden'); },
                 closeMenus: (e) => { if(!e.target.closest('button') && !e.target.closest('#mainMenu') && !e.target.closest('#mobileSearch')) { document.getElementById('mainMenu').classList.add('hidden'); } },
-                toggleSettings: () => document.getElementById('staffModal').classList.toggle('hidden'),
+                toggleSettings: () => { const m = document.getElementById('staffModal'); if(m) m.classList.toggle('hidden'); },
                 toggleAnalysis: () => { const m = document.getElementById('analysisModal'); m.classList.toggle('hidden'); if(!m.classList.contains('hidden')) app.logic.analyze(); },
                 confirmReset: () => { app.ui.toggleMenu(); document.getElementById('confirmModal').classList.remove('hidden'); },
                 toggleCompleted: () => { app.state.showCompleted = !app.state.showCompleted; app.ui.updateCompletedBtn(); app.ui.render(); },
                 updateCompletedBtn: () => { const lbl = document.getElementById('lblCompleted'); if(lbl) lbl.innerText = app.state.showCompleted ? "GİZLE" : "GÖSTER"; },
-                updateShiftUI: () => {
-                    const map = { 'day': '0%', 'night': '33.33%', 'all': '66.66%' };
-                    document.getElementById('shiftIndicator').style.left = map[app.state.shift];
-                    ['day','night','all'].forEach(m => { const btn = document.getElementById(`shift-${m}`); if(m === app.state.shift) { btn.classList.remove('text-gray-400'); btn.classList.add('text-white'); } else { btn.classList.add('text-gray-400'); btn.classList.remove('text-white'); } });
+                
+                showShiftConfig: () => {
+                    document.getElementById('shiftConfigModal').classList.remove('hidden');
+                    app.ui.selectShiftType(app.state.shift || 'day'); 
                 },
+                
+                selectShiftType: (type) => {
+                    ['day', 'night', 'all'].forEach(t => {
+                        const btn = document.getElementById(`sc-btn-${t}`);
+                        if(t === type) { btn.classList.add('active'); btn.classList.remove('bg-white/5', 'text-gray-400'); } 
+                        else { btn.classList.remove('active'); btn.classList.add('bg-white/5', 'text-gray-400'); }
+                    });
+                    const startInp = document.getElementById('sc-start'); const endInp = document.getElementById('sc-end');
+                    if (type === 'day') { startInp.value = "08:00"; endInp.value = "20:00"; } 
+                    else if (type === 'night') { startInp.value = "20:00"; endInp.value = "08:00"; } 
+                    else { startInp.value = "00:00"; endInp.value = "23:59"; }
+                },
+
+                updateHeaderShiftLabel: () => {
+                    const label = document.getElementById('activeShiftLabel'); if(!label) return;
+                    const s = app.state.shift;
+                    const minsToTime = (m) => { let h = Math.floor(m/60); let mn = m%60; if(h>=24) h-=24; return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`; };
+                    let rangeStr = ""; if (s === 'all') rangeStr = "TÜM GÜN"; else { rangeStr = `${minsToTime(app.state.customStart)} - ${minsToTime(app.state.customEnd - (app.state.customEnd > 1440 ? 1440 : 0))}`; }
+                    const name = s === 'day' ? 'GÜNDÜZ' : (s === 'night' ? 'GECE' : 'TÜMÜ');
+                    label.innerText = `${name} (${rangeStr})`;
+                },
+
+                updateShiftUI: () => {
+                   // This function is kept for compatibility but main update happens via label now
+                },
+
                 render: () => {
-                    const grid = document.getElementById('flightGrid'); grid.innerHTML = '';
+                    const grid = document.getElementById('flightGrid'); if(!grid) return; grid.innerHTML = '';
                     const elSearch = document.getElementById('searchInput'); const term = elSearch ? elSearch.value.toLowerCase().replace(/\s+/g, '') : '';
                     const flights = app.state.flights;
-                    if(flights.length === 0) { document.getElementById('emptyState').classList.remove('hidden'); return; } else { document.getElementById('emptyState').classList.add('hidden'); }
+                    const emptyState = document.getElementById('emptyState');
+                    if(flights.length === 0) { if(emptyState) emptyState.classList.remove('hidden'); return; } else { if(emptyState) emptyState.classList.add('hidden'); }
                     const sorted = [...flights].sort((a,b) => a.timestamp - b.timestamp);
                     let counts = { total: flights.length, focus: 0, done: app.state.completed.length, assigned: 0 };
+                    
                     sorted.forEach((f, idx) => {
                         const searchStr = (f.flightNo + f.airline + f.gate + f.route + f.type + f.rawAirline + f.flightNoOnly).toLowerCase().replace(/\s+/g, '');
                         let match = searchStr.includes(term);
                         if(!match && term.length > 0) { const aliases = f.rawAirline.split('/').map(x => x.trim().toLowerCase()); match = aliases.some(a => (a + f.flightNoOnly).includes(term)); }
                         if(term && !match) return;
                         const isDone = app.state.completed.includes(f.id);
+                        
                         let inFocus = false;
                         if(app.state.overrides[f.id] === 'focus') inFocus = true;
                         else if(app.state.overrides[f.id] !== 'hide') {
-                            const date = new Date(f.timestamp); const m = date.getHours() * 60 + date.getMinutes() + (f.isNextDay ? 1440 : 0);
-                            if(app.state.shift === 'day' && m >= 1035 && m <= 1200) inFocus = true; 
-                            else if(app.state.shift === 'night' && m >= 1200 && m <= 1890) inFocus = true; 
-                            else if(app.state.shift === 'all') inFocus = true;
+                            const date = new Date(f.timestamp); 
+                            const m = date.getHours() * 60 + date.getMinutes() + (f.isNextDay ? 1440 : 0);
+                            if (app.state.shift === 'all') { inFocus = true; } 
+                            else { if (m >= app.state.customStart && m <= app.state.customEnd) inFocus = true; }
                         }
+
                         if (app.state.filterMode === 'focus' && !inFocus) return; if (app.state.filterMode === 'completed' && !isDone) return; if (isDone && !app.state.showCompleted && app.state.filterMode !== 'completed') return;
                         if(inFocus && !isDone) counts.focus++; if(app.state.assignments[f.id]) counts.assigned++;
                         const originalGate = f.originalGate || ""; const savedGate = app.state.gates[f.id] !== undefined ? app.state.gates[f.id] : originalGate; const savedStaff = app.state.assignments[f.id] || ''; const isGateChanged = String(savedGate).trim() !== String(originalGate).trim();
                         const isArr = f.type === 'ARR'; const typeClass = isArr ? 'card-arr' : 'card-dep'; const icon = isArr ? 'fa-plane-arrival' : 'fa-plane-departure'; const label = isArr ? 'GELİŞ' : 'GİDİŞ'; const iconColor = isArr ? 'text-emerald-400' : 'text-amber-400';
-                        const dateObj = new Date(f.timestamp); const dateLabel = dateObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+                        const dateObj = new Date(f.timestamp); const dateLabel = dateObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
                         const el = document.createElement('div');
-                        el.className = `flight-card rounded-2xl flex flex-col md:flex-row min-h-auto md:min-h-[100px] ${typeClass} ${inFocus && !isDone ? 'in-focus' : 'is-dimmed'} ${isDone ? 'is-completed' : ''} mb-3 md:mb-4 relative overflow-hidden`;
-                        const completedOverlay = isDone ? `<div class="absolute right-4 top-2 z-50 pointer-events-none transform -rotate-12 opacity-60"><div class="border-2 border-slate-400 text-slate-300 font-display font-bold text-lg px-4 py-1 rounded-lg uppercase tracking-widest shadow-2xl backdrop-blur-sm">TAMAMLANDI</div></div>` : '';
+                        el.className = `flight-card rounded-xl flex flex-col md:flex-row min-h-auto md:min-h-[100px] ${typeClass} ${inFocus && !isDone ? 'in-focus' : 'is-dimmed'} ${isDone ? 'is-completed' : ''} mb-3 md:mb-4 relative overflow-hidden`;
+                        const completedOverlay = isDone ? `<div class="absolute right-4 top-2 z-50 pointer-events-none transform -rotate-12 opacity-60"><div class="border-2 border-slate-400 text-slate-300 font-display font-bold text-sm md:text-lg px-2 py-0.5 rounded-lg uppercase tracking-widest shadow-2xl backdrop-blur-sm">TAMAMLANDI</div></div>` : '';
                         el.innerHTML = `${completedOverlay}
-                            <div class="w-full md:w-28 bg-black/20 flex flex-row md:flex-col items-center justify-between md:justify-center p-3 md:p-4 border-b md:border-b-0 md:border-r border-white/5 relative group">
-                                <div class="flex items-center gap-3 md:block md:text-center"><i class="fa-solid ${icon} ${iconColor} text-2xl md:text-3xl drop-shadow-xl"></i><div class="md:hidden text-lg font-mono font-bold text-white">${f.timeStr}</div></div>
+                            <div class="w-full md:w-28 bg-black/20 flex flex-row md:flex-col items-center justify-between p-3 md:p-4 border-b md:border-b-0 md:border-r border-white/5 relative group">
+                                <div class="flex items-center gap-3 md:block md:text-center"><i class="fa-solid ${icon} ${iconColor} text-xl md:text-3xl drop-shadow-xl"></i><div class="md:hidden text-lg font-mono font-bold text-white">${f.timeStr}</div></div>
                                 <div class="text-right md:text-center"><div class="hidden md:block text-2xl md:text-3xl font-mono font-bold text-white tracking-tighter leading-none">${f.timeStr}</div><div class="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20 mt-1 uppercase text-center">${dateLabel}</div></div>
                             </div>
                             <div class="flex-1 p-3 md:p-4 flex flex-col justify-center relative pl-4 md:pl-5">
-                                <div class="flex items-center justify-between md:justify-start gap-4 mb-1"><div class="text-3xl md:text-4xl font-display font-bold text-white tracking-tight leading-none">${f.flightNo}</div><div class="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase border border-white/10 px-2 py-1 rounded-lg bg-white/5 tracking-widest shadow-inner max-w-[100px] truncate">${f.airline}</div></div>
+                                <div class="flex items-center justify-between md:justify-start gap-4 mb-1"><div class="text-2xl md:text-4xl font-display font-bold text-white tracking-tight">${f.flightNo}</div><div class="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase border border-white/10 px-2 py-0.5 rounded-lg bg-white/5 tracking-widest shadow-inner truncate max-w-[100px]">${f.airline}</div></div>
                                 <div class="flex items-center gap-2 text-xs text-gray-400 font-mono mt-1 md:mt-2 font-bold opacity-80"><span class="w-4 h-4 md:w-5 md:h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0"><i class="fa-solid fa-route text-[8px] md:text-[9px]"></i></span><span class="truncate">${f.route}</span></div>
                             </div>
                             <div class="w-full md:w-72 p-3 flex flex-col justify-center gap-2 bg-black/10 border-t md:border-t-0 md:border-l border-white/5">
                                 <div class="flex gap-2">
-                                    <div class="flex-1 gate-input-wrapper rounded-lg p-0.5 ${isGateChanged ? 'gate-changed' : ''}"><label class="block text-[8px] text-gray-500 font-bold uppercase text-center tracking-wider pt-1">KAPI</label><input type="text" value="${savedGate}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-bold text-lg md:text-xl text-white tracking-widest h-8" placeholder="---"></div>
+                                    <div class="flex-1 gate-input-wrapper rounded-lg p-0.5 ${isGateChanged ? 'gate-changed' : ''}"><label class="block text-[8px] text-gray-500 font-bold uppercase text-center tracking-wider pt-0.5">KAPI</label><input type="text" value="${savedGate}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-bold text-lg md:text-xl text-white tracking-widest h-8" placeholder="---"></div>
                                     <div class="flex flex-col gap-1 w-9"><button onclick="app.logic.toggleOverride('${f.id}', '${inFocus ? 'hide' : 'focus'}')" class="flex-1 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition flex items-center justify-center h-8 md:h-auto"><i class="fa-solid ${inFocus ? 'fa-eye-slash' : 'fa-thumbtack'} text-[10px]"></i></button><button onclick="app.logic.toggleComplete('${f.id}')" class="flex-1 rounded ${isDone ? 'bg-slate-600 text-white' : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-500 hover:text-white'} transition flex items-center justify-center border border-emerald-500/20 hover:border-emerald-500 h-8 md:h-auto"><i class="fa-solid ${isDone ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button></div>
                                 </div>
                                 <div class="relative group"><div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fa-solid fa-user-astronaut text-[10px] text-gray-500 group-hover:text-blue-400 transition"></i></div><input list="staffOptions" value="${savedStaff}" onchange="app.logic.assignStaff('${f.id}', this.value)" placeholder="PERSONEL..." class="w-full bg-white/5 hover:bg-white/10 focus:bg-blue-600/10 border border-white/10 focus:border-blue-500/50 rounded-lg text-base md:text-[10px] font-bold text-white py-2 pl-8 pr-2 outline-none transition uppercase tracking-wide placeholder-gray-600 text-center shadow-sm"></div>
@@ -401,9 +511,17 @@
                         if(row[m.arrNo] && row[m.arrTime]) { const tm = toMins(row[m.arrTime]); if(tm !== null) app.state.flights.push(createFlight(tm, 'ARR', row[m.arrNo], from)); }
                         if(row[m.depNo] && row[m.depTime]) { const tm = toMins(row[m.depTime]); if(tm !== null) app.state.flights.push(createFlight(tm, 'DEP', row[m.depNo], to)); }
                     });
-                    app.state.flights.sort((a,b) => a.timestamp - b.timestamp); app.data.save(); app.ui.render(); app.ui.toast("Veriler Başarıyla İşlendi", "success");
+                    app.state.flights.sort((a,b) => a.timestamp - b.timestamp); app.data.save(); app.ui.showShiftConfig(); app.ui.toast("Dosya Okundu. Vardiya Seçin.", "success");
                 },
-                setShift: (s) => { app.state.shift = s; app.ui.updateShiftUI(); app.ui.render(); },
+                applyShiftConfig: () => {
+                    let type = 'all'; if(document.getElementById('sc-btn-day').classList.contains('active')) type = 'day'; else if(document.getElementById('sc-btn-night').classList.contains('active')) type = 'night';
+                    const startVal = document.getElementById('sc-start').value; const endVal = document.getElementById('sc-end').value;
+                    const timeToMins = (t) => { const [h,m] = t.split(':').map(Number); return h*60 + m; };
+                    let startMins = timeToMins(startVal); let endMins = timeToMins(endVal);
+                    if (endMins < startMins) { endMins += 1440; }
+                    app.state.shift = type; app.state.customStart = startMins; app.state.customEnd = endMins;
+                    document.getElementById('shiftConfigModal').classList.add('hidden'); app.ui.updateHeaderShiftLabel(); app.ui.render(); app.data.save(); app.ui.toast("Vardiya Başlatıldı", "success");
+                },
                 toggleOverride: (id, act) => { if(app.state.overrides[id] === act) delete app.state.overrides[id]; else app.state.overrides[id] = act; app.data.save(); app.ui.render(); },
                 toggleComplete: (id) => { if(app.state.completed.includes(id)) app.state.completed = app.state.completed.filter(x => x!==id); else app.state.completed.push(id); app.data.save(); app.ui.render(); app.ui.renderStaff(); },
                 assignStaff: (id, val) => { app.state.assignments[id] = val; app.data.save(); app.ui.render(); app.ui.renderStaff(); },
@@ -417,7 +535,7 @@
                     sortedF.forEach(flight => {
                         const h = new Date(flight.timestamp).getHours(); const hKey = String(h).padStart(2,'0'); hourCounts[hKey] = (hourCounts[hKey] || 0) + 1;
                         const m = new Date(flight.timestamp).getHours() * 60 + new Date(flight.timestamp).getMinutes() + (flight.isNextDay ? 1440 : 0);
-                        let inShift = false; if(app.state.shift === 'day' && m >= 1035 && m <= 1200) inShift = true; else if(app.state.shift === 'night' && m >= 1200 && m <= 1890) inShift = true; else if(app.state.shift === 'all') inShift = true; if(inShift) shiftFlightCount++;
+                        let inShift = false; if(app.state.shift === 'all') inShift = true; else if (m >= app.state.customStart && m <= app.state.customEnd) inShift = true; if(inShift) shiftFlightCount++;
                     });
                     const orderedHours = [...new Set(sortedF.map(flight => String(new Date(flight.timestamp).getHours()).padStart(2,'0')))]; const maxVal = Math.max(...Object.values(hourCounts), 1);
                     const chartHtml = orderedHours.map(h => { const count = hourCounts[h]; const pct = (count / maxVal) * 100; const color = count > 5 ? 'bg-red-500' : (count > 2 ? 'bg-blue-500' : 'bg-emerald-500'); return `<div class="flex flex-col items-center gap-1 min-w-[25px]"><div class="w-full bg-white/5 rounded-t relative h-24 flex items-end"><div class="w-full ${color} opacity-80" style="height: ${pct}%"></div></div><div class="text-[9px] font-mono text-gray-500">${h}</div></div>`; }).join('');
@@ -427,95 +545,76 @@
                 generatePDF: async () => {
                     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
                     app.ui.toast("PDF Hazırlanıyor...", "info");
-
-                    // Helper to map Turkish chars to Latin
-                    const trMap = (str) => {
-                        return str.replace(/Ğ/g, "G").replace(/ğ/g, "g")
-                                  .replace(/Ü/g, "U").replace(/ü/g, "u")
-                                  .replace(/Ş/g, "S").replace(/ş/g, "s")
-                                  .replace(/İ/g, "I").replace(/ı/g, "i")
-                                  .replace(/Ö/g, "O").replace(/ö/g, "o")
-                                  .replace(/Ç/g, "C").replace(/ç/g, "c");
-                    };
-                    
+                    const trMap = (str) => str.replace(/Ğ/g, "G").replace(/ğ/g, "g").replace(/Ü/g, "U").replace(/ü/g, "u").replace(/Ş/g, "S").replace(/ş/g, "s").replace(/İ/g, "I").replace(/ı/g, "i").replace(/Ö/g, "O").replace(/ö/g, "o").replace(/Ç/g, "C").replace(/ç/g, "c");
                     doc.setFillColor(15, 23, 42); doc.rect(0, 0, 297, 35, 'F');
                     doc.setTextColor(255, 255, 255); doc.setFontSize(26); doc.setFont("helvetica", "bold"); doc.text("FOLLOW-ME", 15, 18); doc.setTextColor(59, 130, 246); doc.text("OPS", 72, 18);
                     doc.setTextColor(148, 163, 184); doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text("KOMUTA MERKEZI VARDIYA RAPORU", 15, 26);
-                    
                     let reportDate = new Date(); if (app.state.baseDate) { reportDate = new Date(app.state.baseDate); }
                     const dateStr = trMap(reportDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }));
-                    const shiftStr = app.state.shift === 'all' ? 'TUMU' : (app.state.shift === 'day' ? 'GUNDUZ (08-20)' : 'GECE (20-08)');
+                    const hStart = Math.floor(app.state.customStart/60); const hEnd = Math.floor((app.state.customEnd > 1440 ? app.state.customEnd - 1440 : app.state.customEnd)/60);
+                    const rangeStr = `${String(hStart).padStart(2,'0')}-${String(hEnd).padStart(2,'0')}`;
+                    const shiftStr = app.state.shift === 'all' ? 'TUMU' : (app.state.shift === 'day' ? `GUNDUZ (${rangeStr})` : `GECE (${rangeStr})`);
                     doc.text(`TARIH: ${dateStr}`, 282, 16, { align: 'right' }); doc.text(`VARDIYA: ${shiftStr}`, 282, 24, { align: 'right' });
-
                     const buffer = 20; const flights = app.state.flights; let filteredFlights = [];
                     if (app.state.shift === 'all') { filteredFlights = flights.map(f => ({...f, isBuffer: false})); } 
                     else {
-                        let startM, endM; if (app.state.shift === 'day') { startM = 1035; endM = 1200; } else { startM = 1200; endM = 1890; }
+                        const startM = app.state.customStart; const endM = app.state.customEnd;
                         const bufStart = startM - buffer; const bufEnd = endM + buffer;
                         filteredFlights = flights.filter(f => { const date = new Date(f.timestamp); const m = date.getHours() * 60 + date.getMinutes() + (f.isNextDay ? 1440 : 0); return (m >= bufStart && m <= bufEnd); }).map(f => { const date = new Date(f.timestamp); const m = date.getHours() * 60 + date.getMinutes() + (f.isNextDay ? 1440 : 0); const isBuffer = (m < startM || m > endM); return { ...f, isBuffer }; });
                     }
-
                     const flightCount = filteredFlights.filter(f => !f.isBuffer).length;
                     doc.setTextColor(255, 255, 255); doc.setFontSize(12); doc.text(`RAPORLANAN: ${flightCount}`, 160, 24, { align: 'center' });
-
                     const rows = filteredFlights.map(f => {
-                        const savedGate = app.state.gates[f.id] !== undefined ? app.state.gates[f.id] : (f.originalGate || "");
-                        const isChanged = String(savedGate).trim() !== String(f.originalGate || "").trim();
-                        const gateDisplay = isChanged ? `${savedGate} (!)` : savedGate;
-                        const isCompleted = app.state.completed.includes(f.id);
-                        return [
-                            f.timeStr, 
-                            f.type === 'ARR' ? 'GELIS' : 'GIDIS', 
-                            f.flightNo, 
-                            trMap(f.airline), 
-                            gateDisplay, 
-                            trMap(f.route), 
-                            trMap(app.state.assignments[f.id] || '-'), 
-                            isCompleted ? 'TAMAMLANDI' : 'BEKLIYOR'
-                        ];
+                        const savedGate = app.state.gates[f.id] !== undefined ? app.state.gates[f.id] : (f.originalGate || ""); const isChanged = String(savedGate).trim() !== String(f.originalGate || "").trim(); const gateDisplay = isChanged ? `${savedGate} (!)` : savedGate; const isCompleted = app.state.completed.includes(f.id);
+                        return [f.timeStr, f.type === 'ARR' ? 'GELIS' : 'GIDIS', f.flightNo, trMap(f.airline), gateDisplay, trMap(f.route), trMap(app.state.assignments[f.id] || '-'), isCompleted ? 'TAMAMLANDI' : 'BEKLIYOR'];
                     });
-
-                    doc.autoTable({
-                        startY: 40, head: [['SAAT', 'TIP', 'UCUS NO', 'HAVAYOLU', 'PARK', 'FROM / TO', 'PERSONEL', 'DURUM']], body: rows,
-                        theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.1, textColor: [51, 65, 85] },
-                        headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', lineWidth: 0, valign: 'middle' },
-                        columnStyles: { 0: { fontStyle: 'bold', halign: 'center', cellWidth: 20 }, 1: { fontStyle: 'bold', halign: 'center', cellWidth: 20 }, 2: { fontStyle: 'bold', halign: 'left', cellWidth: 25 }, 4: { fontStyle: 'bold', halign: 'center', cellWidth: 20 }, 7: { halign: 'center', cellWidth: 30, fontStyle: 'bold' } },
-                        alternateRowStyles: { fillColor: [255, 255, 255] },
-                        didParseCell: (data) => { if (data.section === 'body') { if (filteredFlights[data.row.index].isBuffer) { data.cell.styles.textColor = [156, 163, 175]; data.cell.styles.fontStyle = 'italic'; } else { if (data.column.index === 1) { if (data.cell.raw === 'GELIS') data.cell.styles.textColor = [22, 163, 74]; else data.cell.styles.textColor = [234, 88, 12]; } if (data.column.index === 4 && data.cell.raw.includes('(!)')) { data.cell.styles.textColor = [220, 38, 38]; } if (data.column.index === 7) { if (data.cell.raw === 'TAMAMLANDI') data.cell.styles.textColor = [100, 116, 139]; else data.cell.styles.textColor = [59, 130, 246]; } } } }
-                    });
-
-                    const pageCount = doc.internal.getNumberOfPages();
-                    for(let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(150); doc.text(`Sayfa ${i} / ${pageCount}`, 148, 200, { align: 'center' }); doc.setFontSize(7); doc.setTextColor(100); doc.text("Not: Vardiya sorumluluk sahasinin ±20 dakika toleransindaki ucuslar rapora dahil edilmistir.", 14, 200); }
-                    doc.save(`FollowMe_Rapor_${new Date().toISOString().slice(0,10)}.pdf`); app.ui.toast("PDF Raporu Hazır", "success");
+                    doc.autoTable({ startY: 40, head: [['SAAT', 'TIP', 'UCUS NO', 'HAVAYOLU', 'PARK', 'FROM / TO', 'PERSONEL', 'DURUM']], body: rows, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.1, textColor: [51, 65, 85] }, headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', lineWidth: 0, valign: 'middle' }, columnStyles: { 0: { fontStyle: 'bold', halign: 'center', cellWidth: 20 }, 1: { fontStyle: 'bold', halign: 'center', cellWidth: 20 }, 2: { fontStyle: 'bold', halign: 'left', cellWidth: 25 }, 4: { fontStyle: 'bold', halign: 'center', cellWidth: 20 }, 7: { halign: 'center', cellWidth: 30, fontStyle: 'bold' } }, alternateRowStyles: { fillColor: [255, 255, 255] }, didParseCell: (data) => { if (data.section === 'body') { if (filteredFlights[data.row.index].isBuffer) { data.cell.styles.textColor = [156, 163, 175]; data.cell.styles.fontStyle = 'italic'; } else { if (data.column.index === 1) { if (data.cell.raw === 'GELIS') data.cell.styles.textColor = [22, 163, 74]; else data.cell.styles.textColor = [234, 88, 12]; } if (data.column.index === 4 && data.cell.raw.includes('(!)')) { data.cell.styles.textColor = [220, 38, 38]; } if (data.column.index === 7) { if (data.cell.raw === 'TAMAMLANDI') data.cell.styles.textColor = [100, 116, 139]; else data.cell.styles.textColor = [59, 130, 246]; } } } } });
+                    const pageCount = doc.internal.getNumberOfPages(); for(let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(150); doc.text(`Sayfa ${i} / ${pageCount}`, 148, 200, { align: 'center' }); doc.setFontSize(7); doc.setTextColor(100); doc.text("Not: Vardiya sorumluluk sahasinin ±20 dakika toleransindaki ucuslar rapora dahil edilmistir.", 14, 200); }
+                    const pdfBlob = doc.output('blob'); await downloadOrShare(pdfBlob, `FollowMe_Rapor_${new Date().toISOString().slice(0,10)}.pdf`, 'application/pdf');
                 },
-                generateVisualReport: () => {
+                generateVisualReport: async () => {
                    app.ui.toast("Görsel Hazırlanıyor...", "info");
-                   const container = document.createElement('div'); container.id = 'reportCapture'; document.body.appendChild(container);
+                   const container = document.createElement('div'); container.id = 'reportCapture'; 
+                   container.style.position = 'fixed'; container.style.left = '0'; container.style.top = '0'; container.style.width = '1200px'; container.style.height = '675px'; container.style.zIndex = '9999'; 
+                   document.body.appendChild(container);
                    const flights = app.state.flights; let plannedCount = 0;
                    const shiftFiltered = flights.filter(f => {
                         const date = new Date(f.timestamp); const m = date.getHours() * 60 + date.getMinutes() + (f.isNextDay ? 1440 : 0);
-                        if(app.state.shift === 'day') return (m >= 1035 && m <= 1200); if(app.state.shift === 'night') return (m >= 1200 && m <= 1890); return true;
+                        if(app.state.shift === 'all') return true;
+                        return (m >= app.state.customStart && m <= app.state.customEnd);
                    });
                    shiftFiltered.forEach(f => { plannedCount++; });
                    const servedIDs = app.state.completed; const servedFlights = flights.filter(f => servedIDs.includes(f.id)); const servedCount = servedFlights.length;
                    const servedArr = servedFlights.filter(f => f.type === 'ARR').length; const servedDep = servedFlights.filter(f => f.type === 'DEP').length;
                    const dateStr = app.state.baseDate ? new Date(app.state.baseDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('tr-TR');
-                   const shiftName = app.state.shift === 'all' ? 'TÜMÜ' : (app.state.shift === 'day' ? 'GÜNDÜZ VARDİYASI' : 'GECE VARDİYASI');
+                   const hStart = Math.floor(app.state.customStart/60); const hEnd = Math.floor((app.state.customEnd > 1440 ? app.state.customEnd - 1440 : app.state.customEnd)/60);
+                   const rangeStr = app.state.shift === 'all' ? '' : `(${String(hStart).padStart(2,'0')}-${String(hEnd).padStart(2,'0')})`;
+                   const shiftName = app.state.shift === 'all' ? 'TÜMÜ' : (app.state.shift === 'day' ? `GÜNDÜZ ${rangeStr}` : `GECE ${rangeStr}`);
                    const narrativeText = `Vardiyamızda ${plannedCount} adet uçuş gerçekleşmesi planlanmış olup, ${servedArr} adet geliş ve ${servedDep} adet gidiş olmak üzere toplam ${servedCount} adet uçuşa Follow-Me hizmeti verilmiştir.`;
-                   
                    container.innerHTML = `<div style="width: 100%; height: 100%; background: #0f172a; padding: 40px; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;"><div style="position: absolute; top: -10%; right: -10%; width: 500px; height: 500px; background: rgba(59, 130, 246, 0.08); border-radius: 50%; filter: blur(80px);"></div><div style="position: absolute; bottom: -10%; left: -10%; width: 400px; height: 400px; background: rgba(16, 185, 129, 0.08); border-radius: 50%; filter: blur(80px);"></div><div style="display: flex; justify-content: space-between; align-items: flex-start; z-index: 10;"><div><div style="font-size: 14px; font-weight: 700; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;">Vardiya Sonu Raporu</div><div style="font-size: 48px; font-weight: 800; color: white; line-height: 1.1;">${shiftName}</div><div style="font-size: 24px; color: #94a3b8; margin-top: 8px;">${dateStr}</div></div><div style="width: 80px; height: 80px; background: linear-gradient(135deg, #2563eb, #4338ca); border-radius: 20px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px -5px rgba(37, 99, 235, 0.4);"><svg style="width: 40px; height: 40px; color: white;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg></div></div><div style="display: flex; gap: 30px; margin-top: 40px; z-index: 10;"><div style="flex: 1; background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 30px;"><div style="font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 10px;">PLANLANAN UÇUŞ</div><div style="font-size: 56px; font-weight: 800; color: #94a3b8;">${plannedCount}</div></div><div style="flex: 1.5; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 24px; padding: 30px; position: relative; overflow: hidden;"><div style="font-size: 12px; font-weight: 800; color: #10b981; text-transform: uppercase; margin-bottom: 10px;">HİZMET VERİLEN TOPLAM</div><div style="font-size: 72px; font-weight: 800; color: white; line-height: 1;">${servedCount}</div><div style="display: flex; gap: 15px; margin-top: 20px;"><div style="background: rgba(16, 185, 129, 0.2); padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px;"><svg style="width: 16px; height: 16px; color: #34d399;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg><span style="font-size: 16px; font-weight: 700; color: white;">${servedArr}</span><span style="font-size: 10px; font-weight: 700; color: #34d399; text-transform: uppercase;">GELİŞ</span></div><div style="background: rgba(245, 158, 11, 0.2); padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px;"><svg style="width: 16px; height: 16px; color: #fbbf24;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg><span style="font-size: 16px; font-weight: 700; color: white;">${servedDep}</span><span style="font-size: 10px; font-weight: 700; color: #fbbf24; text-transform: uppercase;">GİDİŞ</span></div></div></div></div><div style="margin-top: auto; margin-bottom: 20px; z-index: 10;"><div style="font-size: 18px; color: #cbd5e1; font-weight: 500; line-height: 1.5; border-left: 4px solid #3b82f6; padding-left: 20px;">${narrativeText}</div></div><div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 20px; z-index: 10;"><div style="font-family: monospace; font-size: 12px; color: #475569;">FOLLOW-ME OPS CENTER • SYSTEM REPORT</div><div style="font-size: 12px; font-weight: 700; color: #10b981; letter-spacing: 1px; text-transform: uppercase;">✔ Operasyon Başarıyla Tamamlandı</div></div></div>`;
-                   html2canvas(container, { backgroundColor: null, scale: 2 }).then(canvas => {
-                        const link = document.createElement('a'); link.download = `Vardiya_Ozeti_${new Date().toISOString().slice(0,10)}.png`; link.href = canvas.toDataURL(); link.click(); document.body.removeChild(container); app.ui.toast("Görsel İndirildi", "success");
-                   });
+                   try {
+                       const canvas = await html2canvas(container, { backgroundColor: null, scale: 2 });
+                       canvas.toBlob(async (blob) => {
+                           if (blob) { await downloadOrShare(blob, `Vardiya_Ozeti_${new Date().toISOString().slice(0,10)}.png`, 'image/png'); }
+                           document.body.removeChild(container);
+                       });
+                   } catch (err) { console.error("Canvas error:", err); document.body.removeChild(container); app.ui.toast("Görsel Hatası", "error"); }
                 },
-                reset: () => { if(confirm("Tüm veriler kalıcı olarak silinecek. Emin misiniz?")) { localStorage.removeItem('fm_v14_4'); window.location.reload(); } }
+                smartReset: () => {
+                    if(confirm("Mevcut uçuş verileri silinecek (Personel listeniz korunur). Emin misiniz?")) {
+                        const currentStaff = app.state.staff;
+                        app.state = { flights: [], shift: 'day', customStart: 480, customEnd: 1200, staff: currentStaff, assignments: {}, gates: {}, overrides: {}, completed: [], showCompleted: true, filterMode: 'all', baseDate: null };
+                        app.data.save(); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.ui.toast("Sistem Temizlendi", "success");
+                        document.getElementById('confirmModal').classList.add('hidden');
+                    }
+                }
             },
             data: {
-                save: () => { localStorage.setItem('fm_v14_4', JSON.stringify(app.state)); const el = document.getElementById('saveStatus'); el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); },
-                load: () => { const s = localStorage.getItem('fm_v14_4'); if(s) { try { app.state = {...app.state, ...JSON.parse(s)}; app.ui.render(); } catch(e){} } },
+                save: () => { localStorage.setItem('fm_v16_0', JSON.stringify(app.state)); const el = document.getElementById('saveStatus'); if(el) { el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); } },
+                load: () => { const s = localStorage.getItem('fm_v16_0'); if(s) { try { app.state = {...app.state, ...JSON.parse(s)}; app.ui.render(); app.ui.updateHeaderShiftLabel(); } catch(e){} } },
                 saveToJson: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(app.state)], {type:'application/json'})); a.download = `backup_${Date.now()}.json`; a.click(); },
-                loadFromJson: (input) => { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); app.ui.render(); app.ui.renderStaff(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
-                reset: () => { app.logic.reset(); }
+                loadFromJson: (input) => { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
+                reset: () => { app.ui.smartReset(); }
             }
         };
         window.addEventListener('DOMContentLoaded', app.init);
