@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Follow-Me Ops | Pro v16.8 (Final)</title>
+    <title>Follow-Me Ops | Pro v18.1</title>
     
     <!-- PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -30,7 +30,8 @@
                         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                         'slide-up': 'slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                         'glow': 'glow 2s ease-in-out infinite alternate',
-                        'flash-red': 'flashRed 1.5s infinite'
+                        'flash-red': 'flashRed 1.5s infinite',
+                        'shake': 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both'
                     },
                     keyframes: {
                         'slide-up': {
@@ -40,6 +41,12 @@
                         'flashRed': {
                             '0%, 100%': { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.15)' },
                             '50%': { borderColor: 'transparent', backgroundColor: 'transparent' }
+                        },
+                        'shake': {
+                            '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+                            '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+                            '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
+                            '40%, 60%': { transform: 'translate3d(4px, 0, 0)' }
                         }
                     },
                     screens: { 'xs': '375px' }
@@ -70,7 +77,7 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* Modern Glass Panel */
+        /* Glass Panel */
         .glass {
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(20px);
@@ -107,6 +114,10 @@
 
         .gate-input-wrapper:focus-within { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
         .gate-changed { animation: flash-red 1.5s infinite; border-color: #ef4444 !important; background: rgba(239, 68, 68, 0.1) !important; }
+        
+        /* Delay Style */
+        .is-delayed { animation: flash-red 2.5s infinite; border: 1px solid #ef4444 !important; }
+
         @keyframes flash-red { 0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.5) inset; } 50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8) inset; } }
 
         @media screen and (max-width: 768px) { input, select, textarea { font-size: 16px !important; } }
@@ -121,142 +132,166 @@
         .shift-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
     </style>
 </head>
-<body class="flex flex-col h-screen text-gray-200 overflow-hidden">
+<body class="flex flex-col h-screen text-gray-200 overflow-hidden bg-[#020617]">
 
-    <div id="toastContainer" class="fixed top-24 right-4 left-4 md:left-auto md:right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+    <div id="toastContainer" class="fixed top-24 right-4 left-4 md:left-auto md:right-6 z-[120] flex flex-col gap-3 pointer-events-none"></div>
 
-    <!-- HEADER -->
-    <header class="h-16 glass flex items-center justify-between px-4 md:px-8 z-50 shrink-0 border-b border-white/5 relative shadow-lg">
-        <div class="flex items-center gap-3 cursor-pointer group" onclick="location.reload()">
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="fixed inset-0 z-[200] bg-[#020617] flex flex-col items-center justify-center p-6">
+        <div class="glass p-8 rounded-3xl w-full max-w-xs text-center border border-white/10 shadow-2xl relative overflow-hidden group">
+            <div class="absolute inset-0 bg-blue-500/5 blur-3xl rounded-full scale-150 animate-pulse-slow"></div>
+            <div class="relative z-10">
+                <div class="w-20 h-20 bg-gradient-to-br from-slate-800 to-black rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl border border-white/10 group-hover:border-blue-500/50 transition duration-500">
+                    <i class="fa-solid fa-fingerprint text-4xl text-blue-500"></i>
+                </div>
+                <h2 class="text-3xl font-display font-bold text-white mb-2 tracking-wide">GÜVENLİK</h2>
+                <p class="text-xs text-gray-400 mb-8 font-mono uppercase tracking-widest">Yetkili Personel Girişi</p>
+                <div class="relative">
+                    <input type="password" id="pinInput" maxlength="4" placeholder="••••" 
+                        onkeydown="if(event.key === 'Enter') app.ui.checkPin()"
+                        class="w-full bg-black/40 border border-white/10 rounded-xl py-4 text-center text-3xl font-mono text-white tracking-[0.5em] focus:border-blue-500 outline-none transition mb-4 placeholder-gray-700 shadow-inner">
+                </div>
+                <button onclick="app.ui.checkPin()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-sm tracking-widest uppercase">
+                    Sisteme Giriş
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP CONTENT -->
+    <div id="appContent" class="flex flex-col h-full hidden opacity-0 transition-opacity duration-500">
+        
+        <header class="h-16 glass flex items-center justify-between px-4 md:px-8 z-50 shrink-0 border-b border-white/5 relative shadow-lg">
+            <div class="flex items-center gap-3 cursor-pointer group" onclick="location.reload()">
+                <div class="relative">
+                    <div class="absolute inset-0 bg-blue-500 blur-lg opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                    <div class="h-9 w-9 md:h-10 md:w-10 bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 rounded-xl flex items-center justify-center relative z-10 shadow-inner">
+                        <i class="fa-solid fa-tower-broadcast text-blue-400 text-lg transform group-hover:-translate-y-1 group-hover:translate-x-1 transition duration-500"></i>
+                    </div>
+                </div>
+                <div>
+                    <h1 class="font-display font-bold text-lg md:text-xl leading-none text-white tracking-wide group-hover:text-blue-400 transition">FOLLOW<span class="text-blue-500">ME</span></h1>
+                    <div class="text-[9px] md:text-[10px] text-gray-400 font-mono uppercase tracking-[0.3em] mt-0.5">Ops Center</div>
+                </div>
+            </div>
+
+            <div class="hidden md:flex flex-col items-center absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
+                <div id="liveClock" class="font-mono text-2xl md:text-3xl font-bold text-white tracking-tighter leading-none tabular-nums drop-shadow-md">00:00:00</div>
+                <div class="flex items-center gap-2 mt-1 opacity-80">
+                    <span class="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest border-r border-white/10 pr-2" id="liveDate">--.--.----</span>
+                    <span class="flex items-center gap-1 text-[9px] md:text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> CANLI
+                    </span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 md:gap-3">
+                <button onclick="app.ui.toggleMobileSearch()" class="lg:hidden w-9 h-9 rounded-xl hover:bg-white/10 text-gray-300 flex items-center justify-center border border-transparent transition">
+                    <i class="fa-solid fa-search"></i>
+                </button>
+
+                <div class="relative group hidden lg:block">
+                    <i class="fa-solid fa-search absolute left-4 top-2.5 text-gray-500 group-focus-within:text-blue-400 transition-colors text-xs"></i>
+                    <input type="text" id="searchInput" placeholder="ARA..." 
+                        class="bg-slate-900/50 border border-white/10 text-white text-xs rounded-xl block w-40 lg:w-48 pl-11 pr-8 py-2 focus:border-blue-500/50 focus:w-56 transition-all duration-300 outline-none font-mono uppercase placeholder-gray-600 shadow-inner">
+                    <button id="clearSearchBtn" onclick="app.ui.clearSearch()" class="hidden absolute right-2 top-2 text-gray-500 hover:text-white p-1 rounded-full hover:bg-white/10 transition"><i class="fa-solid fa-times text-[10px]"></i></button>
+                </div>
+
+                <div class="flex items-center gap-1 bg-slate-900/40 p-1 rounded-xl border border-white/5 shadow-lg backdrop-blur-sm">
+                    <button onclick="app.ui.toggleCompleted()" id="btnToggleCompleted" class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase text-gray-400 hover:text-white hover:bg-white/10 transition border border-transparent flex items-center gap-1.5" title="Geçmişi Gizle/Göster">
+                        <i class="fa-solid fa-clock-rotate-left"></i> <span id="lblCompleted" class="hidden xl:inline">GİZLE</span>
+                    </button>
+                    <div class="w-px h-5 bg-white/10 mx-0.5 hidden sm:block"></div>
+                    <button onclick="app.ui.toggleAnalysis()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-yellow-500 transition hidden sm:flex items-center justify-center" title="Analiz"><i class="fa-solid fa-chart-pie text-sm"></i></button>
+                    <button onclick="app.logic.generatePDF()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-red-500 transition hidden sm:flex items-center justify-center" title="PDF"><i class="fa-solid fa-file-pdf text-sm"></i></button>
+                    <button onclick="app.ui.toggleSettings()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-blue-400 transition hidden sm:flex items-center justify-center" title="Ekip"><i class="fa-solid fa-users-gear text-sm"></i></button>
+                    <button onclick="app.ui.toggleMenu()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-gray-300 transition flex items-center justify-center relative" title="Ayarlar"><i class="fa-solid fa-gear text-sm"></i></button>
+                </div>
+            </div>
+        </header>
+
+        <div id="mobileSearch" class="hidden absolute top-16 left-0 w-full bg-[#0f172a] border-b border-white/10 p-3 z-40 animate-slide-down">
             <div class="relative">
-                <div class="absolute inset-0 bg-blue-500 blur-lg opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                <div class="h-9 w-9 md:h-10 md:w-10 bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 rounded-xl flex items-center justify-center relative z-10 shadow-inner">
-                    <i class="fa-solid fa-tower-broadcast text-blue-400 text-lg transform group-hover:-translate-y-1 group-hover:translate-x-1 transition duration-500"></i>
+                <i class="fa-solid fa-search absolute left-4 top-3 text-gray-500"></i>
+                <input type="text" id="searchInputMobile" placeholder="UÇUŞ ARA (VF1054...)" 
+                    class="w-full bg-slate-900 border border-white/10 rounded-xl py-2.5 pl-10 pr-10 text-white text-base focus:border-blue-500 outline-none font-mono uppercase">
+                <button onclick="app.ui.toggleMobileSearch()" class="absolute right-3 top-2.5 text-gray-400 hover:text-white p-1"><i class="fa-solid fa-times"></i></button>
+            </div>
+        </div>
+
+        <div id="mainMenu" onclick="if(event.target===this) this.classList.add('hidden')" class="hidden fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm transition-opacity">
+            <div class="absolute top-20 right-4 w-72 glass rounded-2xl shadow-2xl animate-slide-up origin-top-right overflow-hidden border border-white/10">
+                <div class="p-2 space-y-1">
+                    <div class="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-white/5 mb-1">Operasyon Menüsü</div>
+                    <div class="sm:hidden space-y-1 pb-2 border-b border-white/5 mb-1">
+                        <button onclick="app.ui.toggleAnalysis()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-medium text-yellow-500 hover:text-yellow-400 text-left"><i class="fa-solid fa-chart-pie w-5"></i> Analiz</button>
+                        <button onclick="app.logic.generatePDF()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-medium text-red-500 hover:text-red-400 text-left"><i class="fa-solid fa-file-pdf w-5"></i> PDF Rapor</button>
+                        <button onclick="app.ui.toggleSettings()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-medium text-blue-400 hover:text-blue-300 text-left"><i class="fa-solid fa-users-gear w-5"></i> Ekip Yönetimi</button>
+                    </div>
+                    <label class="flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl cursor-pointer transition text-sm font-bold text-gray-300 hover:text-white group">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition"><i class="fa-solid fa-file-excel"></i></div>Excel Yükle <input type="file" id="fileInput" class="hidden" accept=".xlsx, .csv" onchange="app.logic.handleFileUpload(event)">
+                    </label>
+                    <button onclick="app.logic.generateVisualReport()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-bold text-gray-300 hover:text-white text-left group">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition"><i class="fa-solid fa-image"></i></div>Görsel Özet İndir
+                    </button>
+                    <div class="h-px bg-white/5 my-2"></div>
+                    <button onclick="app.data.saveToJson()" class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group"><i class="fa-solid fa-download w-5 text-center"></i> Yedek Al</button>
+                    <label class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group cursor-pointer"><i class="fa-solid fa-upload w-5 text-center"></i> Yedek Yükle <input type="file" onchange="app.data.loadFromJson(this)" class="hidden" accept=".json"></label>
+                    <div class="h-px bg-white/5 my-2"></div>
+                    <button onclick="app.ui.confirmReset()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 rounded-xl transition text-xs font-bold text-red-500 text-left group">
+                        <div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-white transition"><i class="fa-solid fa-trash"></i></div>Sistemi Sıfırla
+                    </button>
                 </div>
             </div>
-            <div>
-                <h1 class="font-display font-bold text-lg md:text-xl leading-none text-white tracking-wide group-hover:text-blue-400 transition">FOLLOW<span class="text-blue-500">ME</span></h1>
-                <div class="text-[9px] md:text-[10px] text-gray-400 font-mono uppercase tracking-[0.3em] mt-0.5">Ops Center</div>
-            </div>
         </div>
 
-        <div class="hidden md:flex flex-col items-center absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
-            <div id="liveClock" class="font-mono text-2xl md:text-3xl font-bold text-white tracking-tighter leading-none tabular-nums drop-shadow-md">00:00:00</div>
-            <div class="flex items-center gap-2 mt-1 opacity-80">
-                <span class="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest border-r border-white/10 pr-2" id="liveDate">--.--.----</span>
-                <span class="flex items-center gap-1 text-[9px] md:text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> CANLI
-                </span>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-2 md:gap-3">
-            <button onclick="app.ui.toggleMobileSearch()" class="lg:hidden w-9 h-9 rounded-xl hover:bg-white/10 text-gray-300 flex items-center justify-center border border-transparent transition">
-                <i class="fa-solid fa-search"></i>
-            </button>
-
-            <div class="relative group hidden lg:block">
-                <i class="fa-solid fa-search absolute left-4 top-2.5 text-gray-500 group-focus-within:text-blue-400 transition-colors text-xs"></i>
-                <input type="text" id="searchInput" placeholder="ARA..." 
-                    class="bg-slate-900/50 border border-white/10 text-white text-xs rounded-xl block w-40 lg:w-48 pl-11 pr-8 py-2 focus:border-blue-500/50 focus:w-56 transition-all duration-300 outline-none font-mono uppercase placeholder-gray-600 shadow-inner">
-                <button id="clearSearchBtn" onclick="app.ui.clearSearch()" class="hidden absolute right-2 top-2 text-gray-500 hover:text-white p-1 rounded-full hover:bg-white/10 transition"><i class="fa-solid fa-times text-[10px]"></i></button>
-            </div>
-
-            <div class="flex items-center gap-1 bg-slate-900/40 p-1 rounded-xl border border-white/5 shadow-lg backdrop-blur-sm">
-                <button onclick="app.ui.toggleCompleted()" id="btnToggleCompleted" class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase text-gray-400 hover:text-white hover:bg-white/10 transition border border-transparent flex items-center gap-1.5" title="Geçmişi Gizle/Göster">
-                    <i class="fa-solid fa-clock-rotate-left"></i> <span id="lblCompleted" class="hidden xl:inline">GİZLE</span>
-                </button>
-                <div class="w-px h-5 bg-white/10 mx-0.5 hidden sm:block"></div>
-                <button onclick="app.ui.toggleAnalysis()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-yellow-500 transition hidden sm:flex items-center justify-center" title="Analiz"><i class="fa-solid fa-chart-pie text-sm"></i></button>
-                <button onclick="app.logic.generatePDF()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-red-500 transition hidden sm:flex items-center justify-center" title="PDF"><i class="fa-solid fa-file-pdf text-sm"></i></button>
-                <button onclick="app.ui.toggleSettings()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-blue-400 transition hidden sm:flex items-center justify-center" title="Ekip"><i class="fa-solid fa-users-gear text-sm"></i></button>
-                <button onclick="app.ui.toggleMenu()" class="w-8 h-8 rounded-lg hover:bg-white/10 text-gray-300 transition flex items-center justify-center relative" title="Ayarlar"><i class="fa-solid fa-gear text-sm"></i></button>
-            </div>
-        </div>
-    </header>
-
-    <div id="mobileSearch" class="hidden absolute top-16 left-0 w-full bg-[#0f172a] border-b border-white/10 p-3 z-40 animate-slide-down">
-        <div class="relative">
-            <i class="fa-solid fa-search absolute left-4 top-3 text-gray-500"></i>
-            <input type="text" id="searchInputMobile" placeholder="UÇUŞ ARA (VF1054...)" 
-                class="w-full bg-slate-900 border border-white/10 rounded-xl py-2.5 pl-10 pr-10 text-white text-base focus:border-blue-500 outline-none font-mono uppercase">
-            <button onclick="app.ui.toggleMobileSearch()" class="absolute right-3 top-2.5 text-gray-400 hover:text-white p-1"><i class="fa-solid fa-times"></i></button>
-        </div>
-    </div>
-
-    <div id="mainMenu" onclick="if(event.target===this) this.classList.add('hidden')" class="hidden fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm transition-opacity">
-        <div class="absolute top-20 right-4 w-72 glass rounded-2xl shadow-2xl animate-slide-up origin-top-right overflow-hidden border border-white/10">
-            <div class="p-2 space-y-1">
-                <div class="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-white/5 mb-1">Operasyon Menüsü</div>
-                <div class="sm:hidden space-y-1 pb-2 border-b border-white/5 mb-1">
-                    <button onclick="app.ui.toggleAnalysis()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-medium text-yellow-500 hover:text-yellow-400 text-left"><i class="fa-solid fa-chart-pie w-5"></i> Analiz</button>
-                    <button onclick="app.logic.generatePDF()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-medium text-red-500 hover:text-red-400 text-left"><i class="fa-solid fa-file-pdf w-5"></i> PDF Rapor</button>
-                    <button onclick="app.ui.toggleSettings()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-medium text-blue-400 hover:text-blue-300 text-left"><i class="fa-solid fa-users-gear w-5"></i> Ekip Yönetimi</button>
+        <!-- Filter & Shift Bar (Sticky) -->
+        <div class="bg-[#020617]/95 backdrop-blur border-b border-white/5 p-3 flex justify-between items-center gap-3 sticky top-0 z-40 shadow-xl overflow-x-auto no-scrollbar">
+            <!-- Shift Info / Trigger -->
+            <div class="flex items-center gap-2 cursor-pointer group shrink-0" onclick="app.ui.showShiftConfig()">
+                <div class="w-8 h-8 rounded-lg bg-blue-600/10 border border-blue-600/30 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-sliders"></i>
                 </div>
-                <label class="flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl cursor-pointer transition text-sm font-bold text-gray-300 hover:text-white group">
-                    <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition"><i class="fa-solid fa-file-excel"></i></div>Excel Yükle <input type="file" id="fileInput" class="hidden" accept=".xlsx, .csv">
-                </label>
-                <button onclick="app.logic.generateVisualReport()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition text-sm font-bold text-gray-300 hover:text-white text-left group">
-                    <div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition"><i class="fa-solid fa-image"></i></div>Görsel Özet İndir
-                </button>
-                <div class="h-px bg-white/5 my-2"></div>
-                <button onclick="app.data.saveToJson()" class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group"><i class="fa-solid fa-download w-5 text-center"></i> Yedek Al</button>
-                <label class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group cursor-pointer"><i class="fa-solid fa-upload w-5 text-center"></i> Yedek Yükle <input type="file" onchange="app.data.loadFromJson(this)" class="hidden" accept=".json"></label>
-                <div class="h-px bg-white/5 my-2"></div>
-                <button onclick="app.ui.confirmReset()" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 rounded-xl transition text-xs font-bold text-red-500 text-left group">
-                    <div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-white transition"><i class="fa-solid fa-trash"></i></div>Sistemi Sıfırla
-                </button>
+                <div class="flex flex-col">
+                    <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">AKTİF VARDİYA</span>
+                    <span id="activeShiftLabel" class="text-xs font-bold text-white uppercase tracking-wide group-hover:text-blue-400 transition">VARDİYA YOK</span>
+                </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Sticky Filter Bar with Active Shift Info -->
-    <div class="bg-[#020617]/95 backdrop-blur border-b border-white/5 p-3 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-0 z-40 shadow-xl overflow-x-auto no-scrollbar">
-        <!-- Shift Info / Trigger -->
-        <div class="flex items-center gap-2 cursor-pointer group shrink-0" onclick="app.ui.showShiftConfig()">
-            <div class="w-8 h-8 rounded-lg bg-blue-600/10 border border-blue-600/30 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition">
-                <i class="fa-solid fa-sliders"></i>
-            </div>
-            <div class="flex flex-col">
-                <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">AKTİF VARDİYA</span>
-                <span id="activeShiftLabel" class="text-xs font-bold text-white uppercase tracking-wide group-hover:text-blue-400 transition">VARDİYA YOK</span>
+            <!-- View Filters -->
+            <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                <button onclick="app.ui.setFilter('all')" id="filter-all" class="flex-1 md:flex-none px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
+                <button onclick="app.ui.setFilter('focus')" id="filter-focus" class="flex-1 md:flex-none px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Odak</button>
+                <button onclick="app.ui.setFilter('completed')" id="filter-completed" class="flex-1 md:flex-none px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Biten</button>
             </div>
         </div>
 
-        <!-- View Filters -->
-        <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
-            <button onclick="app.ui.setFilter('all')" id="filter-all" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
-            <button onclick="app.ui.setFilter('focus')" id="filter-focus" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Odak</button>
-            <button onclick="app.ui.setFilter('completed')" id="filter-completed" class="flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 border border-transparent whitespace-nowrap">Bitenler</button>
-        </div>
-    </div>
-
-    <main onclick="app.ui.closeMenus(event)" class="flex-1 overflow-y-auto p-2 md:p-6 lg:px-12 relative custom-scroll scroll-smooth">
-        <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
-            <div class="glass p-8 md:p-10 rounded-3xl border border-white/10 text-center max-w-sm pointer-events-auto shadow-2xl relative overflow-hidden mx-4">
-                <div class="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-50"></div>
-                <div class="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 ring-1 ring-blue-500/30 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative z-10"><i class="fa-solid fa-tower-broadcast text-4xl text-blue-500 animate-pulse"></i></div>
-                <h2 class="text-xl md:text-2xl font-display font-bold text-white mb-2 tracking-wide relative z-10">Vardiya Bekleniyor</h2>
-                <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed relative z-10">Günlük operasyon listesini yükleyerek<br>sistemi aktif hale getirin.</p>
-                <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-xl shadow-blue-600/20 active:scale-95 relative z-10"><i class="fa-solid fa-cloud-arrow-up"></i><span>DOSYA SEÇ</span><input type="file" onchange="app.logic.handleFileUpload(event)" class="hidden" accept=".xlsx, .csv"></label>
+        <main onclick="app.ui.closeMenus(event)" class="flex-1 overflow-y-auto p-2 md:p-6 lg:px-12 relative custom-scroll scroll-smooth">
+            <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
+                <div class="glass p-8 md:p-10 rounded-3xl border border-white/10 text-center max-w-sm pointer-events-auto shadow-2xl relative overflow-hidden mx-4">
+                    <div class="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-50"></div>
+                    <div class="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 ring-1 ring-blue-500/30 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative z-10"><i class="fa-solid fa-tower-broadcast text-4xl text-blue-500 animate-pulse"></i></div>
+                    <h2 class="text-xl md:text-2xl font-display font-bold text-white mb-2 tracking-wide relative z-10">Vardiya Bekleniyor</h2>
+                    <p class="text-xs text-gray-400 mb-8 font-medium leading-relaxed relative z-10">Günlük operasyon listesini yükleyerek<br>sistemi aktif hale getirin.</p>
+                    <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-xl shadow-blue-600/20 active:scale-95 relative z-10"><i class="fa-solid fa-cloud-arrow-up"></i><span>DOSYA SEÇ</span><input type="file" onchange="app.logic.handleFileUpload(event)" class="hidden" accept=".xlsx, .csv"></label>
+                </div>
             </div>
-        </div>
-        <div id="flightGrid" class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 pb-32 relative z-10 max-w-8xl mx-auto"></div>
-    </main>
+            <div id="flightGrid" class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 pb-32 relative z-10 max-w-8xl mx-auto"></div>
+        </main>
 
-    <footer class="h-14 glass border-t border-white/5 flex items-center justify-between px-4 md:px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest z-50">
-        <div class="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar w-full items-center">
-            <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-list text-gray-400"></i><span class="hidden sm:inline">Toplam:</span><span id="statTotal" class="text-white">0</span></span>
-            <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-eye text-blue-500"></i><span class="hidden sm:inline">Odak:</span><span id="statFocus" class="text-blue-400">0</span></span>
-            <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-check-circle text-emerald-500"></i><span class="hidden sm:inline">Biten:</span><span id="statDone" class="text-emerald-400">0</span></span>
-            <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-user-astronaut text-purple-500"></i><span class="hidden sm:inline">Atanan:</span><span id="statAssigned" class="text-purple-400">0</span></span>
-        </div>
-        <div id="saveStatus" class="opacity-0 transition-opacity text-emerald-500 flex items-center gap-2 font-bold tracking-wider hidden md:flex"><i class="fa-solid fa-floppy-disk animate-bounce"></i> <span>KAYITLI</span></div>
-    </footer>
+        <footer class="h-14 glass border-t border-white/5 flex items-center justify-between px-4 md:px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest z-50">
+            <div class="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar w-full items-center">
+                <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-list text-gray-400"></i><span class="hidden sm:inline">Toplam:</span><span id="statTotal" class="text-white">0</span></span>
+                <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-eye text-blue-500"></i><span class="hidden sm:inline">Odak:</span><span id="statFocus" class="text-blue-400">0</span></span>
+                <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-check-circle text-emerald-500"></i><span class="hidden sm:inline">Biten:</span><span id="statDone" class="text-emerald-400">0</span></span>
+                <span class="flex items-center gap-2 whitespace-nowrap"><i class="fa-solid fa-user-astronaut text-purple-500"></i><span class="hidden sm:inline">Atanan:</span><span id="statAssigned" class="text-purple-400">0</span></span>
+            </div>
+            <div id="saveStatus" class="opacity-0 transition-opacity text-emerald-500 flex items-center gap-2 font-bold tracking-wider hidden md:flex"><i class="fa-solid fa-floppy-disk animate-bounce"></i> <span>KAYITLI</span></div>
+        </footer>
 
     <!-- MODALS -->
 
-    <!-- Shift Config Modal (NEW) -->
+    <!-- Shift Config Modal -->
     <div id="shiftConfigModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-md z-[110] flex items-center justify-center p-4 transition-opacity">
         <div class="glass bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-slide-up border border-white/10">
             <div class="p-6 text-center border-b border-white/5">
@@ -359,7 +394,7 @@
                 customStart: 480, // 08:00
                 customEnd: 1200, // 20:00
                 staff: ['AHMET Y.', 'MEHMET K.', 'AYŞE D.', 'FATMA S.', 'CAN B.'], 
-                assignments: {}, gates: {}, overrides: {}, completed: [], 
+                assignments: {}, gates: {}, overrides: {}, completed: [], delayed: {},
                 showCompleted: true, filterMode: 'all', baseDate: null 
             },
             init: () => {
@@ -369,9 +404,39 @@
                 const searchInput = document.getElementById('searchInput'); const searchInputMobile = document.getElementById('searchInputMobile');
                 const handleSearch = (e) => { const val = e.target.value; if(e.target.id === 'searchInput') { document.getElementById('clearSearchBtn').classList.toggle('hidden', val.length === 0); if(searchInputMobile) searchInputMobile.value = val; } else { if(searchInput) searchInput.value = val; document.getElementById('clearSearchBtn').classList.toggle('hidden', val.length === 0); } app.ui.render(); };
                 if(searchInput) searchInput.addEventListener('input', handleSearch); if(searchInputMobile) searchInputMobile.addEventListener('input', handleSearch);
+                
+                // Show Login Screen if not logged in this session
+                if (!sessionStorage.getItem('isLoggedIn')) {
+                     document.getElementById('loginScreen').classList.remove('hidden');
+                } else {
+                     document.getElementById('appContent').classList.remove('hidden');
+                     document.getElementById('appContent').classList.remove('opacity-0');
+                     document.getElementById('loginScreen').classList.add('hidden');
+                }
+
                 setInterval(app.data.save, 15000);
             },
             ui: {
+                checkPin: () => {
+                    const pin = document.getElementById('pinInput').value;
+                    if(pin === '1105') {
+                        sessionStorage.setItem('isLoggedIn', 'true');
+                        const login = document.getElementById('loginScreen');
+                        login.style.opacity = '0';
+                        login.style.transition = 'opacity 0.5s';
+                        setTimeout(() => {
+                            login.classList.add('hidden');
+                            const content = document.getElementById('appContent');
+                            content.classList.remove('hidden');
+                            setTimeout(() => content.classList.remove('opacity-0'), 50);
+                        }, 500);
+                    } else {
+                        const box = document.querySelector('#loginScreen .glass');
+                        box.classList.add('animate-shake');
+                        document.getElementById('pinInput').value = '';
+                        setTimeout(() => box.classList.remove('animate-shake'), 500);
+                    }
+                },
                 toast: (msg, type = 'info') => {
                     const c = document.getElementById('toastContainer'); const d = document.createElement('div');
                     const cls = { success: 'border-emerald-500 bg-emerald-500/20 shadow-emerald-500/10 text-emerald-200', error: 'border-red-500 bg-red-500/20 shadow-red-500/10 text-red-200', info: 'border-blue-500 bg-blue-500/20 shadow-blue-500/10 text-blue-200' };
@@ -428,7 +493,6 @@
                 },
 
                 smartReset: () => {
-                    // Direct reset logic, called from modal button
                     const currentStaff = app.state.staff;
                     app.state = {
                         flights: [],
@@ -439,6 +503,7 @@
                         gates: {},
                         overrides: {},
                         completed: [],
+                        delayed: {},
                         showCompleted: true,
                         filterMode: 'all',
                         baseDate: null
@@ -464,7 +529,6 @@
                         if(term && !match) return;
                         const isDone = app.state.completed.includes(f.id);
                         
-                        // NEW: Dynamic Focus Logic
                         let inFocus = false;
                         if(app.state.overrides[f.id] === 'focus') inFocus = true;
                         else if(app.state.overrides[f.id] !== 'hide') {
@@ -480,16 +544,27 @@
                         const originalGate = f.originalGate || ""; const savedGate = app.state.gates[f.id] !== undefined ? app.state.gates[f.id] : originalGate; const savedStaff = app.state.assignments[f.id] || ''; const isGateChanged = String(savedGate).trim() !== String(originalGate).trim();
                         const isArr = f.type === 'ARR'; const typeClass = isArr ? 'card-arr' : 'card-dep'; const icon = isArr ? 'fa-plane-arrival' : 'fa-plane-departure'; const label = isArr ? 'GELİŞ' : 'GİDİŞ'; const iconColor = isArr ? 'text-emerald-400' : 'text-amber-400';
                         const dateObj = new Date(f.timestamp); const dateLabel = dateObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+                        
+                        // Delay Logic
+                        const isDelayed = app.state.delayed[f.id];
+                        const delayClass = isDelayed ? 'is-delayed' : '';
+                        const delayBadge = isDelayed ? `<div class="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg z-20 animate-pulse">GECİKME</div>` : '';
+
+                        // Type Label
+                        const typeLabel = isArr ? 
+                            `<div class="text-[10px] font-extrabold text-emerald-400 tracking-widest mt-1 text-center border border-white/5 rounded bg-black/20 px-1">İNİŞ</div>` : 
+                            `<div class="text-[10px] font-extrabold text-amber-400 tracking-widest mt-1 text-center border border-white/5 rounded bg-black/20 px-1">KALKIŞ</div>`;
+
                         const el = document.createElement('div');
-                        el.className = `flight-card rounded-xl flex flex-col md:flex-row min-h-auto md:min-h-[100px] ${typeClass} ${inFocus && !isDone ? 'in-focus' : 'is-dimmed'} ${isDone ? 'is-completed' : ''} mb-3 md:mb-4 relative overflow-hidden`;
+                        el.className = `flight-card rounded-xl flex flex-col md:flex-row min-h-auto md:min-h-[100px] ${typeClass} ${inFocus && !isDone ? 'in-focus' : 'is-dimmed'} ${isDone ? 'is-completed' : ''} ${delayClass} mb-3 md:mb-4 relative overflow-hidden`;
                         const completedOverlay = isDone ? `<div class="absolute right-4 top-2 z-50 pointer-events-none transform -rotate-12 opacity-60"><div class="border-2 border-slate-400 text-slate-300 font-display font-bold text-sm md:text-lg px-2 py-0.5 rounded-lg uppercase tracking-widest shadow-2xl backdrop-blur-sm">TAMAMLANDI</div></div>` : '';
-                        el.innerHTML = `${completedOverlay}
+                        el.innerHTML = `${completedOverlay}${delayBadge}
                             <div class="w-full md:w-28 bg-black/20 flex flex-row md:flex-col items-center justify-between p-3 md:p-4 border-b md:border-b-0 md:border-r border-white/5 relative group">
                                 <div class="flex items-center gap-3 md:block md:text-center"><i class="fa-solid ${icon} ${iconColor} text-xl md:text-3xl drop-shadow-xl"></i><div class="md:hidden text-lg font-mono font-bold text-white">${f.timeStr}</div></div>
                                 <div class="text-right md:text-center">
                                     <div class="hidden md:block text-2xl md:text-3xl font-mono font-bold text-white tracking-tighter leading-none">${f.timeStr}</div>
                                     <div class="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20 mt-1 uppercase text-center">${dateLabel}</div>
-                                    <div class="text-[10px] font-extrabold ${isArr ? 'text-emerald-400' : 'text-amber-400'} tracking-widest mt-1 text-center border border-white/5 rounded bg-black/20 px-1">${isArr ? 'İNİŞ' : 'KALKIŞ'}</div>
+                                    ${typeLabel}
                                 </div>
                             </div>
                             <div class="flex-1 p-3 md:p-4 flex flex-col justify-center relative pl-4 md:pl-5">
@@ -499,7 +574,11 @@
                             <div class="w-full md:w-72 p-3 flex flex-col justify-center gap-2 bg-black/10 border-t md:border-t-0 md:border-l border-white/5">
                                 <div class="flex gap-2">
                                     <div class="flex-1 gate-input-wrapper rounded-lg p-0.5 ${isGateChanged ? 'gate-changed' : ''}"><label class="block text-[8px] text-gray-500 font-bold uppercase text-center tracking-wider pt-0.5">KAPI</label><input type="text" value="${savedGate}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-bold text-lg md:text-xl text-white tracking-widest h-8" placeholder="---"></div>
-                                    <div class="flex flex-col gap-1 w-9"><button onclick="app.logic.toggleOverride('${f.id}', '${inFocus ? 'hide' : 'focus'}')" class="flex-1 rounded bg-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition flex items-center justify-center h-8 md:h-auto"><i class="fa-solid ${inFocus ? 'fa-eye-slash' : 'fa-thumbtack'} text-[10px]"></i></button><button onclick="app.logic.toggleComplete('${f.id}')" class="flex-1 rounded ${isDone ? 'bg-slate-600 text-white' : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-500 hover:text-white'} transition flex items-center justify-center border border-emerald-500/20 hover:border-emerald-500 h-8 md:h-auto"><i class="fa-solid ${isDone ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button></div>
+                                    <div class="flex flex-col gap-1 w-9">
+                                        <button onclick="app.logic.toggleOverride('${f.id}', '${inFocus ? 'hide' : 'focus'}')" class="flex-1 rounded bg-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition flex items-center justify-center h-8 md:h-auto"><i class="fa-solid ${inFocus ? 'fa-eye-slash' : 'fa-thumbtack'} text-[10px]"></i></button>
+                                        <button onclick="app.logic.toggleDelay('${f.id}')" class="flex-1 rounded ${isDelayed ? 'bg-red-500 text-white' : 'bg-white/5 text-gray-400'} hover:bg-red-600 transition flex items-center justify-center h-8 md:h-auto"><i class="fa-solid fa-clock text-[10px]"></i></button>
+                                        <button onclick="app.logic.toggleComplete('${f.id}')" class="flex-1 rounded ${isDone ? 'bg-slate-600 text-white' : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-500 hover:text-white'} transition flex items-center justify-center border border-emerald-500/20 hover:border-emerald-500 h-8 md:h-auto"><i class="fa-solid ${isDone ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button>
+                                    </div>
                                 </div>
                                 <div class="relative group"><div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fa-solid fa-user-astronaut text-[10px] text-gray-500 group-hover:text-blue-400 transition"></i></div><input list="staffOptions" value="${savedStaff}" onchange="app.logic.assignStaff('${f.id}', this.value)" placeholder="PERSONEL..." class="w-full bg-white/5 hover:bg-white/10 focus:bg-blue-600/10 border border-white/10 focus:border-blue-500/50 rounded-lg text-base md:text-[10px] font-bold text-white py-2 pl-8 pr-2 outline-none transition uppercase tracking-wide placeholder-gray-600 text-center shadow-sm"></div>
                             </div>
@@ -552,6 +631,7 @@
                 setShift: (s) => { app.ui.showShiftConfig(); }, // Re-opens wizard
                 toggleOverride: (id, act) => { if(app.state.overrides[id] === act) delete app.state.overrides[id]; else app.state.overrides[id] = act; app.data.save(); app.ui.render(); },
                 toggleComplete: (id) => { if(app.state.completed.includes(id)) app.state.completed = app.state.completed.filter(x => x!==id); else app.state.completed.push(id); app.data.save(); app.ui.render(); app.ui.renderStaff(); },
+                toggleDelay: (id) => { if(app.state.delayed[id]) delete app.state.delayed[id]; else app.state.delayed[id] = true; app.data.save(); app.ui.render(); },
                 assignStaff: (id, val) => { app.state.assignments[id] = val; app.data.save(); app.ui.render(); app.ui.renderStaff(); },
                 updateGate: (id, val) => { app.state.gates[id] = val; app.data.save(); app.ui.render(); },
                 addStaff: () => { const v = document.getElementById('newStaffName').value.trim().toUpperCase(); if(v && !app.state.staff.includes(v)) { app.state.staff.push(v); document.getElementById('newStaffName').value = ''; app.ui.renderStaff(); app.data.save(); app.ui.toast("Eklendi", "success"); } },
@@ -665,7 +745,8 @@
                             completed: [],
                             showCompleted: true,
                             filterMode: 'all',
-                            baseDate: null
+                            baseDate: null,
+                            delayed: {} // Added delayed reset
                         };
                         app.data.save(); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.ui.toast("Sistem Temizlendi", "success");
                         const cm = document.getElementById('confirmModal'); if(cm) cm.classList.add('hidden');
@@ -673,10 +754,10 @@
                 }
             },
             data: {
-                save: () => { localStorage.setItem('fm_v16_2', JSON.stringify(app.state)); const el = document.getElementById('saveStatus'); if(el) { el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); } },
-                load: () => { const s = localStorage.getItem('fm_v16_2'); if(s) { try { app.state = {...app.state, ...JSON.parse(s)}; app.ui.render(); app.ui.updateHeaderShiftLabel(); } catch(e){} } },
+                save: () => { localStorage.setItem('fm_v16_6', JSON.stringify(app.state)); const el = document.getElementById('saveStatus'); if(el) { el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); } },
+                load: () => { const s = localStorage.getItem('fm_v16_6'); if(s) { try { app.state = {...app.state, ...JSON.parse(s)}; if(!app.state.delayed) app.state.delayed={}; app.ui.render(); app.ui.updateHeaderShiftLabel(); } catch(e){} } },
                 saveToJson: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(app.state)], {type:'application/json'})); a.download = `backup_${Date.now()}.json`; a.click(); },
-                loadFromJson: (input) => { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
+                loadFromJson: (input) => { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); if(!app.state.delayed) app.state.delayed={}; app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
                 reset: () => { app.ui.smartReset(); }
             }
         };
