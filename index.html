@@ -725,6 +725,7 @@
 
 
             const app = {
+                isAdmin: false, // Admin mi yoksa kullanıcı mı - Firebase'e GİTMEYECEK
                 state: {
                     flights: [],
                     shift: 'day',
@@ -735,8 +736,7 @@
                     showCompleted: true, filterMode: 'all', baseDate: null,
                     history: [], // Son 10 işlem için geri alma
                     flightHistory: {}, // Uçuş değişiklik geçmişi
-                    showUpdatedOnly: false, // Güncellenmiş filtresi
-                    isAdmin: false // Admin mi yoksa kullanıcı mı
+                    showUpdatedOnly: false // Güncellenmiş filtresi
                 },
                 init: () => {
                     app.data.load(); app.ui.startClock(); app.ui.renderStaff(); app.ui.updateShiftUI(); app.ui.setFilter(app.state.filterMode); app.ui.updateCompletedBtn(); app.ui.updateHeaderShiftLabel();
@@ -751,7 +751,7 @@
                         document.getElementById('loginScreen').classList.remove('hidden');
                     } else {
                         // Session'dan admin durumunu yükle
-                        app.state.isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+                        app.isAdmin = sessionStorage.getItem('isAdmin') === 'true';
                         document.getElementById('appContent').classList.remove('hidden');
                         document.getElementById('appContent').classList.remove('opacity-0');
                         document.getElementById('loginScreen').classList.add('hidden');
@@ -769,7 +769,7 @@
                 ui: {
                     // Kullanıcı girişi (sadece okuma)
                     loginAsUser: () => {
-                        app.state.isAdmin = false;
+                        app.isAdmin = false;
                         sessionStorage.setItem('isLoggedIn', 'true');
                         sessionStorage.setItem('isAdmin', 'false');
                         app.ui.completeLogin();
@@ -780,7 +780,7 @@
                     loginAsAdmin: () => {
                         const pin = document.getElementById('pinInput').value;
                         if (pin === CONSTANTS.DEFAULT_PIN) {
-                            app.state.isAdmin = true;
+                            app.isAdmin = true;
                             sessionStorage.setItem('isLoggedIn', 'true');
                             sessionStorage.setItem('isAdmin', 'true');
                             app.ui.completeLogin();
@@ -811,7 +811,7 @@
 
                     // Admin UI güncellemesi (düzenleme kontrollerini gizle/göster)
                     updateAdminUI: () => {
-                        const isAdmin = app.state.isAdmin;
+                        const isAdmin = app.isAdmin;
                         // Admin değilse düzenleme butonlarını gizle
                         document.querySelectorAll('.admin-only').forEach(el => {
                             el.style.display = isAdmin ? '' : 'none';
@@ -1035,7 +1035,7 @@
                         let counts = { total: flights.length, focus: 0, done: app.state.completed.length, assigned: 0 };
 
                         // Admin kontrolü - kullanıcı modunda inputlar disabled olacak
-                        const isAdmin = app.state.isAdmin;
+                        const isAdmin = app.isAdmin;
                         const disabledAttr = isAdmin ? '' : 'disabled';
                         const adminOnlyClass = isAdmin ? '' : 'pointer-events-none opacity-50';
 
@@ -1825,14 +1825,14 @@
                         localStorage.setItem(CONSTANTS.STORAGE_KEY, JSON.stringify(app.state));
 
                         // Firebase'e SADECE ADMİN kaydedebilir
-                        if (typeof firebaseDB !== 'undefined' && app.state.isAdmin) {
+                        if (typeof firebaseDB !== 'undefined' && app.isAdmin) {
                             firebaseDB.ref('appState').set(app.state)
                                 .then(() => {
                                     const el = document.getElementById('saveStatus');
                                     if (el) { el.style.opacity = '1'; el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up animate-bounce text-green-400"></i> <span class="text-green-400">SENKRON</span>'; setTimeout(() => el.style.opacity = '0', 2000); }
                                 })
                                 .catch(err => { console.error('Firebase save error:', err); app.ui.toast('Senkronizasyon hatası', 'error'); });
-                        } else if (!app.state.isAdmin) {
+                        } else if (!app.isAdmin) {
                             // Kullanıcı modunda değişiklik yapmaya çalıştıysa uyar
                             // (Lokal değişiklik yapılabilir ama Firebase'e gitmez)
                         } else {
@@ -1871,6 +1871,8 @@
                                     const currentHash = JSON.stringify(app.state);
                                     const newHash = JSON.stringify(data);
                                     if (currentHash !== newHash) {
+                                        // isAdmin'i koru - Firebase'den gelen isAdmin'i yok say
+                                        if (data.isAdmin !== undefined) delete data.isAdmin;
                                         app.state = { ...app.state, ...data };
                                         if (!app.state.delayed) app.state.delayed = {};
                                         if (!app.state.timeChanges) app.state.timeChanges = {};
