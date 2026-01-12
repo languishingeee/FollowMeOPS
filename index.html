@@ -266,7 +266,7 @@
                                 class="fa-solid fa-users-gear w-5"></i> Ekip Yönetimi</button>
                     </div>
                     <label
-                        class="flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl cursor-pointer transition text-sm font-bold text-gray-300 hover:text-white group">
+                        class="admin-only flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl cursor-pointer transition text-sm font-bold text-gray-300 hover:text-white group">
                         <div
                             class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition">
                             <i class="fa-solid fa-file-excel"></i>
@@ -282,15 +282,15 @@
                     </button>
                     <div class="h-px bg-white/5 my-2"></div>
                     <button onclick="app.data.saveToJson()"
-                        class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group"><i
+                        class="admin-only w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group"><i
                             class="fa-solid fa-download w-5 text-center"></i> Yedek Al</button>
                     <label
-                        class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group cursor-pointer"><i
+                        class="admin-only w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group cursor-pointer"><i
                             class="fa-solid fa-upload w-5 text-center"></i> Yedek Yükle <input type="file"
                             onchange="app.data.loadFromJson(this)" class="hidden" accept=".json"></label>
                     <div class="h-px bg-white/5 my-2"></div>
                     <button onclick="app.ui.confirmReset()"
-                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 rounded-xl transition text-xs font-bold text-red-500 text-left group">
+                        class="admin-only w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 rounded-xl transition text-xs font-bold text-red-500 text-left group">
                         <div
                             class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-white transition">
                             <i class="fa-solid fa-trash"></i>
@@ -383,7 +383,7 @@
             <div class="flex items-center justify-around py-2 px-1">
                 <!-- Excel Upload -->
                 <label
-                    class="flex flex-col items-center gap-1 p-2 rounded-xl active:bg-white/10 transition cursor-pointer">
+                    class="admin-only flex flex-col items-center gap-1 p-2 rounded-xl active:bg-white/10 transition cursor-pointer">
                     <div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
                         <i class="fa-solid fa-file-excel text-emerald-500 text-lg"></i>
                     </div>
@@ -805,6 +805,7 @@
                             content.classList.remove('hidden');
                             setTimeout(() => content.classList.remove('opacity-0'), 50);
                             app.ui.updateAdminUI();
+                            app.ui.render(); // Kartları yeniden çiz (admin kontrolü ile)
                         }, 500);
                     },
 
