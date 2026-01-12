@@ -1151,6 +1151,7 @@
                 logic: {
                     pendingExcelData: null, // Bekleyen Excel verisi
                     handleFileUpload: (e) => {
+                        if (!app.isAdmin) { app.ui.toast('Bu işlem için admin yetkisi gerekli', 'error'); e.target.value = ''; return; }
                         const file = e.target.files[0]; if (!file) return;
                         const r = new FileReader();
                         r.onload = (evt) => {
@@ -1345,11 +1346,12 @@
                         app.state.flightHistory[id].push({ timestamp: Date.now(), field, oldValue, newValue });
                         if (app.state.flightHistory[id].length > 10) app.state.flightHistory[id].shift();
                     },
-                    toggleOverride: (id, act) => { app.logic.pushHistory(); if (app.state.overrides[id] === act) delete app.state.overrides[id]; else app.state.overrides[id] = act; app.data.save(); app.ui.render(); },
-                    toggleComplete: (id) => { app.logic.pushHistory(); if (app.state.completed.includes(id)) app.state.completed = app.state.completed.filter(x => x !== id); else app.state.completed.push(id); app.data.save(); app.ui.render(); app.ui.renderStaff(); },
-                    toggleDelay: (id) => { app.logic.pushHistory(); if (app.state.delayed[id]) delete app.state.delayed[id]; else app.state.delayed[id] = true; app.data.save(); app.ui.render(); },
-                    assignStaff: (id, val) => { app.logic.pushHistory(); app.state.assignments[id] = val; app.data.save(); app.ui.render(); app.ui.renderStaff(); },
+                    toggleOverride: (id, act) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); if (app.state.overrides[id] === act) delete app.state.overrides[id]; else app.state.overrides[id] = act; app.data.save(); app.ui.render(); },
+                    toggleComplete: (id) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); if (app.state.completed.includes(id)) app.state.completed = app.state.completed.filter(x => x !== id); else app.state.completed.push(id); app.data.save(); app.ui.render(); app.ui.renderStaff(); },
+                    toggleDelay: (id) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); if (app.state.delayed[id]) delete app.state.delayed[id]; else app.state.delayed[id] = true; app.data.save(); app.ui.render(); },
+                    assignStaff: (id, val) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); app.state.assignments[id] = val; app.data.save(); app.ui.render(); app.ui.renderStaff(); },
                     updateGate: (id, val) => {
+                        if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
                         app.logic.pushHistory();
                         const flight = app.state.flights.find(f => f.id === id);
                         const oldGate = app.state.gates[id] || (flight ? flight.originalGate : '');
@@ -1369,6 +1371,7 @@
                         app.data.save(); app.ui.render();
                     },
                     updateFlightTime: (id, newTime) => {
+                        if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
                         console.log('updateFlightTime called:', id, newTime);
                         if (!newTime) { console.log('No new time provided'); return; }
                         const flight = app.state.flights.find(f => f.id === id);
@@ -1409,6 +1412,7 @@
                         app.ui.toast(`Saat güncellendi: ${originalTime} → ${newTime}`, 'success');
                     },
                     addManualFlight: () => {
+                        if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
                         const type = document.getElementById('af-type-arr').className.includes('bg-emerald-500') ? 'ARR' : 'DEP';
                         const time = document.getElementById('af-time').value;
                         const flightNo = document.getElementById('af-flightno').value.trim().toUpperCase();
@@ -1819,75 +1823,82 @@
 
                 },
                 data: {
-                    // Firebase'e kaydet (ve localStorage'a yedek)
+                    // Firebase'e kaydet - SADECE ADMİN
                     save: () => {
-                        // LocalStorage yedek (herkes yapabilir)
-                        localStorage.setItem(CONSTANTS.STORAGE_KEY, JSON.stringify(app.state));
+                        // Admin değilse kaydetme!
+                        if (!app.isAdmin) {
+                            console.log('⚠️ Kullanıcı modunda kayıt yapılamaz');
+                            return;
+                        }
 
-                        // Firebase'e SADECE ADMİN kaydedebilir
-                        if (typeof firebaseDB !== 'undefined' && app.isAdmin) {
+                        // Firebase'e kaydet
+                        if (typeof firebaseDB !== 'undefined') {
                             firebaseDB.ref('appState').set(app.state)
                                 .then(() => {
                                     const el = document.getElementById('saveStatus');
-                                    if (el) { el.style.opacity = '1'; el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up animate-bounce text-green-400"></i> <span class="text-green-400">SENKRON</span>'; setTimeout(() => el.style.opacity = '0', 2000); }
+                                    if (el) {
+                                        el.style.opacity = '1';
+                                        el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up animate-bounce text-green-400"></i> <span class="text-green-400">SENKRON</span>';
+                                        setTimeout(() => el.style.opacity = '0', 2000);
+                                    }
+                                    console.log('✅ Firebase\'e kaydedildi');
                                 })
-                                .catch(err => { console.error('Firebase save error:', err); app.ui.toast('Senkronizasyon hatası', 'error'); });
-                        } else if (!app.isAdmin) {
-                            // Kullanıcı modunda değişiklik yapmaya çalıştıysa uyar
-                            // (Lokal değişiklik yapılabilir ama Firebase'e gitmez)
-                        } else {
-                            const el = document.getElementById('saveStatus');
-                            if (el) { el.style.opacity = '1'; setTimeout(() => el.style.opacity = '0', 2000); }
+                                .catch(err => {
+                                    console.error('Firebase save error:', err);
+                                    app.ui.toast('Senkronizasyon hatası', 'error');
+                                });
                         }
                     },
 
                     // Firebase'den yükle ve gerçek zamanlı dinle
                     load: () => {
-                        // Önce localStorage'dan yükle (hızlı başlangıç)
-                        const oldData = localStorage.getItem('fm_v16_6');
-                        if (oldData && !localStorage.getItem(CONSTANTS.STORAGE_KEY)) {
-                            localStorage.setItem(CONSTANTS.STORAGE_KEY, oldData);
-                            localStorage.removeItem('fm_v16_6');
-                        }
-                        const s = localStorage.getItem(CONSTANTS.STORAGE_KEY);
-                        if (s) {
-                            try {
-                                app.state = { ...app.state, ...JSON.parse(s) };
-                                if (!app.state.delayed) app.state.delayed = {};
-                                if (!app.state.timeChanges) app.state.timeChanges = {};
-                                if (!app.state.flightHistory) app.state.flightHistory = {};
-                                if (!app.state.history) app.state.history = [];
-                                app.ui.render();
-                                app.ui.updateHeaderShiftLabel();
-                            } catch (e) { console.error('Load error:', e); }
-                        }
-
-                        // Firebase gerçek zamanlı listener
+                        // Firebase gerçek zamanlı listener - TEK KAYNAK
                         if (typeof firebaseDB !== 'undefined') {
                             firebaseDB.ref('appState').on('value', (snapshot) => {
                                 const data = snapshot.val();
                                 if (data) {
-                                    // Sadece farklıysa güncelle (kendi kaydettiğimizi yok say)
-                                    const currentHash = JSON.stringify(app.state);
-                                    const newHash = JSON.stringify(data);
-                                    if (currentHash !== newHash) {
-                                        // isAdmin'i koru - Firebase'den gelen isAdmin'i yok say
-                                        if (data.isAdmin !== undefined) delete data.isAdmin;
-                                        app.state = { ...app.state, ...data };
-                                        if (!app.state.delayed) app.state.delayed = {};
-                                        if (!app.state.timeChanges) app.state.timeChanges = {};
-                                        if (!app.state.flightHistory) app.state.flightHistory = {};
-                                        if (!app.state.history) app.state.history = [];
-                                        app.ui.render();
-                                        app.ui.renderStaff();
-                                        app.ui.updateHeaderShiftLabel();
-                                        // Senkronizasyon bildirimi
-                                        const el = document.getElementById('saveStatus');
-                                        if (el) { el.style.opacity = '1'; el.innerHTML = '<i class="fa-solid fa-cloud-arrow-down text-blue-400"></i> <span class="text-blue-400">GÜNCELLENDİ</span>'; setTimeout(() => el.style.opacity = '0', 3000); }
+                                    // isAdmin'i koru - Firebase'den gelen isAdmin'i yok say
+                                    if (data.isAdmin !== undefined) delete data.isAdmin;
+
+                                    // State'i güncelle
+                                    app.state = {
+                                        flights: data.flights || [],
+                                        shift: data.shift || 'day',
+                                        customStart: data.customStart || 480,
+                                        customEnd: data.customEnd || 1200,
+                                        staff: data.staff || ['AHMET Y.', 'MEHMET K.', 'AYŞE D.', 'FATMA S.', 'CAN B.'],
+                                        assignments: data.assignments || {},
+                                        gates: data.gates || {},
+                                        overrides: data.overrides || {},
+                                        completed: data.completed || [],
+                                        delayed: data.delayed || {},
+                                        timeChanges: data.timeChanges || {},
+                                        showCompleted: data.showCompleted !== undefined ? data.showCompleted : true,
+                                        filterMode: data.filterMode || 'all',
+                                        baseDate: data.baseDate || null,
+                                        history: data.history || [],
+                                        flightHistory: data.flightHistory || {},
+                                        showUpdatedOnly: data.showUpdatedOnly || false
+                                    };
+
+                                    // UI'ı güncelle
+                                    app.ui.render();
+                                    app.ui.renderStaff();
+                                    app.ui.updateHeaderShiftLabel();
+                                    app.ui.updateAdminUI(); // Her seferinde admin UI'ı güncelle!
+
+                                    // Senkronizasyon bildirimi
+                                    const el = document.getElementById('saveStatus');
+                                    if (el) {
+                                        el.style.opacity = '1';
+                                        el.innerHTML = '<i class="fa-solid fa-cloud-arrow-down text-blue-400"></i> <span class="text-blue-400">GÜNCELLENDİ</span>';
+                                        setTimeout(() => el.style.opacity = '0', 3000);
                                     }
                                 }
                             });
                             console.log('🔥 Firebase Realtime Database bağlandı!');
+                        } else {
+                            console.warn('⚠️ Firebase bağlantısı yok!');
                         }
                     },
 
