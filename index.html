@@ -1033,6 +1033,11 @@
                         const sorted = [...flights].sort((a, b) => a.timestamp - b.timestamp);
                         let counts = { total: flights.length, focus: 0, done: app.state.completed.length, assigned: 0 };
 
+                        // Admin kontrolü - kullanıcı modunda inputlar disabled olacak
+                        const isAdmin = app.state.isAdmin;
+                        const disabledAttr = isAdmin ? '' : 'disabled';
+                        const adminOnlyClass = isAdmin ? '' : 'pointer-events-none opacity-50';
+
                         sorted.forEach((f, idx) => {
                             const searchStr = (f.flightNo + f.airline + f.gate + f.route + f.type + f.rawAirline + f.flightNoOnly).toLowerCase().replace(/\s+/g, '');
                             let match = searchStr.includes(term);
@@ -1089,14 +1094,14 @@
                                 <div class="flex items-center gap-3 md:hidden w-full">
                                     <div class="w-14 h-14 rounded-xl bg-gradient-to-br ${isArr ? 'from-emerald-500/30 to-emerald-600/20' : 'from-amber-500/30 to-amber-600/20'} flex items-center justify-center border-2 ${isArr ? 'border-emerald-500/50' : 'border-amber-500/50'}"><i class="fa-solid ${icon} ${iconColor} text-3xl"></i></div>
                                     <div class="flex-1 flex flex-col gap-1">
-                                        <input type="time" value="${f.timeStr}" onchange="app.logic.updateFlightTime('${f.id}', this.value)" class="w-full text-xl font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-2 py-1.5 text-center focus:border-blue-500 outline-none ${timeChangedClass}">
+                                        <input type="time" value="${f.timeStr}" onchange="app.logic.updateFlightTime('${f.id}', this.value)" class="w-full text-xl font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-2 py-1.5 text-center focus:border-blue-500 outline-none ${timeChangedClass} ${adminOnlyClass}" ${disabledAttr}>
                                         <div class="text-sm font-extrabold ${isArr ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30' : 'text-amber-400 bg-amber-500/20 border-amber-500/30'} px-2 py-1 rounded-lg uppercase text-center border">${isArr ? '✈ İNİŞ' : '✈ KALKIŞ'}</div>
                                     </div>
                                     ${(app.state.flightHistory && app.state.flightHistory[f.id] && app.state.flightHistory[f.id].length > 0) ? `<button onclick="app.ui.showFlightHistory('${f.id}')" class="w-8 h-8 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 flex items-center justify-center border border-blue-500/30" title="Değişiklik Geçmişi"><i class="fa-solid fa-history text-xs"></i></button>` : ''}
                                 </div>
                                 <div class="hidden md:flex md:flex-col md:items-center md:text-center w-full gap-1">
                                     <div class="w-14 h-14 rounded-xl bg-gradient-to-br ${isArr ? 'from-emerald-500/30 to-emerald-600/20' : 'from-amber-500/30 to-amber-600/20'} flex items-center justify-center border-2 ${isArr ? 'border-emerald-500/50' : 'border-amber-500/50'}"><i class="fa-solid ${icon} ${iconColor} text-2xl"></i></div>
-                                    <input type="time" value="${f.timeStr}" onchange="app.logic.updateFlightTime('${f.id}', this.value)" class="w-full text-lg font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-1 py-1 text-center focus:border-blue-500 outline-none ${timeChangedClass}">
+                                    <input type="time" value="${f.timeStr}" onchange="app.logic.updateFlightTime('${f.id}', this.value)" class="w-full text-lg font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-1 py-1 text-center focus:border-blue-500 outline-none ${timeChangedClass} ${adminOnlyClass}" ${disabledAttr}>
                                     <span class="text-[8px] font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">${dateLabel}</span>
                                     <div class="text-xs font-extrabold ${isArr ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30' : 'text-amber-400 bg-amber-500/20 border-amber-500/30'} px-2 py-0.5 rounded-md uppercase border">${isArr ? 'İNİŞ' : 'KALKIŞ'}</div>
                                 </div>
@@ -1116,17 +1121,17 @@
                                 <div class="flex gap-2">
                                     <div class="gate-input-wrapper rounded-lg p-1 bg-black/30 border ${isGateChanged ? 'border-amber-500 gate-changed' : 'border-white/10'}">
                                         <label class="block text-[7px] text-gray-500 font-bold uppercase text-center tracking-wider">KAPI</label>
-                                        <input type="text" value="${savedGate}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-extrabold text-3xl text-white tracking-widest h-9 w-16" placeholder="---">
+                                        <input type="text" value="${savedGate}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-extrabold text-3xl text-white tracking-widest h-9 w-16 ${adminOnlyClass}" placeholder="---" ${disabledAttr}>
                                     </div>
                                     <div class="flex flex-col gap-1">
-                                        <button onclick="app.logic.toggleOverride('${f.id}', '${inFocus ? 'hide' : 'focus'}')" class="w-9 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition flex items-center justify-center" title="${inFocus ? 'Gizle' : 'Odakla'}"><i class="fa-solid ${inFocus ? 'fa-eye-slash' : 'fa-thumbtack'} text-[10px]"></i></button>
-                                        <button onclick="app.logic.toggleDelay('${f.id}')" class="w-9 h-8 rounded-lg ${isDelayed ? 'bg-red-500 text-white' : 'bg-white/5 text-gray-500 hover:text-red-400'} transition flex items-center justify-center" title="Gecikme"><i class="fa-solid fa-clock text-[10px]"></i></button>
-                                        <button onclick="app.logic.toggleComplete('${f.id}')" class="w-9 h-8 rounded-lg ${isDone ? 'bg-slate-600 text-white' : 'bg-emerald-500/20 hover:bg-emerald-600 text-emerald-400 hover:text-white'} transition flex items-center justify-center" title="${isDone ? 'Geri Al' : 'Tamamla'}"><i class="fa-solid ${isDone ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button>
+                                        <button onclick="app.logic.toggleOverride('${f.id}', '${inFocus ? 'hide' : 'focus'}')" class="w-9 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition flex items-center justify-center ${adminOnlyClass}" title="${inFocus ? 'Gizle' : 'Odakla'}" ${disabledAttr}><i class="fa-solid ${inFocus ? 'fa-eye-slash' : 'fa-thumbtack'} text-[10px]"></i></button>
+                                        <button onclick="app.logic.toggleDelay('${f.id}')" class="w-9 h-8 rounded-lg ${isDelayed ? 'bg-red-500 text-white' : 'bg-white/5 text-gray-500 hover:text-red-400'} transition flex items-center justify-center ${adminOnlyClass}" title="Gecikme" ${disabledAttr}><i class="fa-solid fa-clock text-[10px]"></i></button>
+                                        <button onclick="app.logic.toggleComplete('${f.id}')" class="w-9 h-8 rounded-lg ${isDone ? 'bg-slate-600 text-white' : 'bg-emerald-500/20 hover:bg-emerald-600 text-emerald-400 hover:text-white'} transition flex items-center justify-center ${adminOnlyClass}" title="${isDone ? 'Geri Al' : 'Tamamla'}" ${disabledAttr}><i class="fa-solid ${isDone ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button>
                                     </div>
                                 </div>
                                 <div class="relative">
                                     <i class="fa-solid fa-user text-[10px] text-gray-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
-                                    <input list="staffOptions" value="${savedStaff}" onchange="app.logic.assignStaff('${f.id}', this.value)" placeholder="Personel..." class="w-full bg-black/20 hover:bg-black/30 focus:bg-blue-500/10 border border-white/10 focus:border-blue-500/50 rounded-lg text-xs font-bold text-white py-2 pl-8 pr-2 outline-none transition uppercase placeholder-gray-600">
+                                    <input list="staffOptions" value="${savedStaff}" onchange="app.logic.assignStaff('${f.id}', this.value)" placeholder="Personel..." class="w-full bg-black/20 hover:bg-black/30 focus:bg-blue-500/10 border border-white/10 focus:border-blue-500/50 rounded-lg text-xs font-bold text-white py-2 pl-8 pr-2 outline-none transition uppercase placeholder-gray-600 ${adminOnlyClass}" ${disabledAttr}>
                                 </div>
                             </div>
                         `;
