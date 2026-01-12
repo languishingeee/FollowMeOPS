@@ -816,16 +816,40 @@
                         document.querySelectorAll('.admin-only').forEach(el => {
                             el.style.display = isAdmin ? '' : 'none';
                         });
-                        // Header'a rol göstergesi ekle
+                        // Sol alta rol göstergesi ve geçiş butonu ekle
                         const existingBadge = document.getElementById('roleBadge');
                         if (existingBadge) existingBadge.remove();
-                        const header = document.querySelector('header');
-                        if (header) {
-                            const badge = document.createElement('div');
-                            badge.id = 'roleBadge';
-                            badge.className = `fixed top-16 right-4 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider z-[80] ${isAdmin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'}`;
-                            badge.innerHTML = isAdmin ? '<i class="fa-solid fa-user-shield mr-1"></i> ADMIN' : '<i class="fa-solid fa-eye mr-1"></i> KULLANICI';
-                            document.body.appendChild(badge);
+
+                        const badge = document.createElement('div');
+                        badge.id = 'roleBadge';
+                        badge.className = `fixed bottom-20 md:bottom-4 left-4 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider z-[80] cursor-pointer transition hover:scale-105 ${isAdmin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30' : 'bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30'}`;
+                        badge.innerHTML = isAdmin ? '<i class="fa-solid fa-user-shield mr-1"></i> ADMIN <i class="fa-solid fa-repeat ml-2 opacity-50"></i>' : '<i class="fa-solid fa-eye mr-1"></i> KULLANICI <i class="fa-solid fa-repeat ml-2 opacity-50"></i>';
+                        badge.title = isAdmin ? 'Kullanıcı moduna geç' : 'Admin moduna geç (PIN gerekli)';
+                        badge.onclick = () => app.ui.showRoleSwitchModal();
+                        document.body.appendChild(badge);
+                    },
+
+                    // Rol geçiş modalı
+                    showRoleSwitchModal: () => {
+                        if (app.isAdmin) {
+                            // Admin -> Kullanıcı (direkt geçiş)
+                            app.isAdmin = false;
+                            sessionStorage.setItem('isAdmin', 'false');
+                            app.ui.updateAdminUI();
+                            app.ui.render();
+                            app.ui.toast('Kullanıcı moduna geçildi', 'info');
+                        } else {
+                            // Kullanıcı -> Admin (PIN gerekli)
+                            const pin = prompt('Admin PIN girin:');
+                            if (pin === CONSTANTS.DEFAULT_PIN) {
+                                app.isAdmin = true;
+                                sessionStorage.setItem('isAdmin', 'true');
+                                app.ui.updateAdminUI();
+                                app.ui.render();
+                                app.ui.toast('Admin moduna geçildi', 'success');
+                            } else if (pin !== null) {
+                                app.ui.toast('Hatalı PIN', 'error');
+                            }
                         }
                     },
 
@@ -859,7 +883,7 @@
                     },
                     toggleMenu: () => { const m = document.getElementById('mainMenu'); if (m) m.classList.toggle('hidden'); },
                     closeMenus: (e) => { if (!e.target.closest('button') && !e.target.closest('#mainMenu') && !e.target.closest('#mobileSearch')) { document.getElementById('mainMenu').classList.add('hidden'); } },
-                    toggleSettings: () => { const m = document.getElementById('staffModal'); if (m) m.classList.toggle('hidden'); },
+                    toggleSettings: () => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } const m = document.getElementById('staffModal'); if (m) m.classList.toggle('hidden'); },
                     toggleAnalysis: () => { const m = document.getElementById('analysisModal'); m.classList.toggle('hidden'); if (!m.classList.contains('hidden')) app.logic.analyze(); },
                     confirmReset: () => { app.ui.toggleMenu(); document.getElementById('confirmModal').classList.remove('hidden'); },
                     toggleCompleted: () => { app.state.showCompleted = !app.state.showCompleted; app.ui.updateCompletedBtn(); app.ui.render(); },
@@ -1298,6 +1322,7 @@
                         app.ui.toast("Dosya Okundu. Vardiya Seçin.", "success");
                     },
                     applyShiftConfig: () => {
+                        if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); document.getElementById('shiftConfigModal').classList.add('hidden'); return; }
                         let type = 'all'; if (document.getElementById('sc-btn-day').classList.contains('active')) type = 'day'; else if (document.getElementById('sc-btn-night').classList.contains('active')) type = 'night';
                         const startVal = document.getElementById('sc-start').value; const endVal = document.getElementById('sc-end').value;
                         const timeToMins = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -1306,7 +1331,7 @@
                         app.state.shift = type; app.state.customStart = startMins; app.state.customEnd = endMins;
                         document.getElementById('shiftConfigModal').classList.add('hidden'); app.ui.updateHeaderShiftLabel(); app.ui.render(); app.data.save(); app.ui.toast("Vardiya Başlatıldı", "success");
                     },
-                    setShift: (s) => { app.ui.showShiftConfig(); }, // Re-opens wizard
+                    setShift: (s) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.ui.showShiftConfig(); }, // Re-opens wizard
                     // History için yardımcı fonksiyonlar
                     pushHistory: () => {
                         const snapshot = JSON.stringify({
