@@ -1309,14 +1309,24 @@
                     setShift: (s) => { app.ui.showShiftConfig(); }, // Re-opens wizard
                     // History için yardımcı fonksiyonlar
                     pushHistory: () => {
-                        const snapshot = JSON.stringify({ assignments: app.state.assignments, gates: app.state.gates, overrides: app.state.overrides, completed: app.state.completed, delayed: app.state.delayed, timeChanges: app.state.timeChanges });
+                        const snapshot = JSON.stringify({
+                            flights: JSON.parse(JSON.stringify(app.state.flights)), // Deep copy
+                            assignments: app.state.assignments,
+                            gates: app.state.gates,
+                            overrides: app.state.overrides,
+                            completed: app.state.completed,
+                            delayed: app.state.delayed,
+                            timeChanges: app.state.timeChanges
+                        });
                         if (!app.state.history) app.state.history = [];
                         app.state.history.push(snapshot);
                         if (app.state.history.length > 10) app.state.history.shift();
                     },
                     undo: () => {
+                        if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
                         if (!app.state.history || app.state.history.length === 0) { app.ui.toast("Geri alınacak işlem yok", "info"); return; }
                         const prev = JSON.parse(app.state.history.pop());
+                        if (prev.flights) app.state.flights = prev.flights;
                         app.state.assignments = prev.assignments || {};
                         app.state.gates = prev.gates || {};
                         app.state.overrides = prev.overrides || {};
