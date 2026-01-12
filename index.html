@@ -823,7 +823,7 @@
                         if (header) {
                             const badge = document.createElement('div');
                             badge.id = 'roleBadge';
-                            badge.className = `fixed top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider z-[100] ${isAdmin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'}`;
+                            badge.className = `fixed top-16 right-4 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider z-[80] ${isAdmin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'}`;
                             badge.innerHTML = isAdmin ? '<i class="fa-solid fa-user-shield mr-1"></i> ADMIN' : '<i class="fa-solid fa-eye mr-1"></i> KULLANICI';
                             document.body.appendChild(badge);
                         }
@@ -1454,8 +1454,8 @@
                         app.ui.toast(`${flightNo} eklendi!`, 'success');
                     },
 
-                    addStaff: () => { const v = document.getElementById('newStaffName').value.trim().toUpperCase(); if (v && !app.state.staff.includes(v)) { app.state.staff.push(v); document.getElementById('newStaffName').value = ''; app.ui.renderStaff(); app.data.save(); app.ui.toast("Eklendi", "success"); } },
-                    removeStaff: (s) => { app.state.staff = app.state.staff.filter(x => x !== s); app.ui.renderStaff(); app.data.save(); },
+                    addStaff: () => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } const v = document.getElementById('newStaffName').value.trim().toUpperCase(); if (v && !app.state.staff.includes(v)) { app.state.staff.push(v); document.getElementById('newStaffName').value = ''; app.ui.renderStaff(); app.data.save(); app.ui.toast("Eklendi", "success"); } },
+                    removeStaff: (s) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.state.staff = app.state.staff.filter(x => x !== s); app.ui.renderStaff(); app.data.save(); },
                     analyze: () => {
                         const allFlights = app.state.flights; if (!allFlights.length) return;
                         const sortedF = [...allFlights].sort((a, b) => a.timestamp - b.timestamp);
