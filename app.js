@@ -9,6 +9,9 @@ const CONSTANTS = {
     PDF_BUFFER_MINUTES: 60
 };
 
+// Admin PIN (Firestore'dan yüklenebilir)
+let adminPin = CONSTANTS.DEFAULT_PIN;
+
 // ========== AIRLABS API MODULE ==========
 const airLabs = {
     // API Konfigürasyonu (Firestore'dan yükleniyor)
@@ -31,7 +34,7 @@ const airLabs = {
         }
         try {
             const doc = await db.collection('settings').doc('airlabs').get();
-            console.log('🔍 AirLabs: Firestore doc:', doc.exists, doc.data());
+
             if (doc.exists && doc.data() && doc.data().apiKey) {
                 airLabs.apiKey = doc.data().apiKey;
                 console.log('✅ AirLabs: API key Firestore\'dan yüklendi');
@@ -268,6 +271,34 @@ const airLabs = {
     }
 };
 
+// ========== ADMIN PIN FUNCTIONS ==========
+// Firestore'dan PIN yükle
+async function loadAdminPin() {
+    if (typeof db === 'undefined') return;
+    try {
+        const doc = await db.collection('settings').doc('admin').get();
+        if (doc.exists && doc.data() && doc.data().pin) {
+            adminPin = doc.data().pin;
+            console.log('✅ Admin PIN Firestore\'dan yüklendi');
+        }
+    } catch (err) {
+        console.error('❌ Admin PIN yükleme hatası:', err);
+    }
+}
+
+// Firestore'a PIN kaydet
+async function saveAdminPin(newPin) {
+    if (typeof db === 'undefined') return false;
+    try {
+        await db.collection('settings').doc('admin').set({ pin: newPin }, { merge: true });
+        adminPin = newPin;
+        console.log('✅ Admin PIN Firestore\'a kaydedildi');
+        return true;
+    } catch (err) {
+        console.error('❌ Admin PIN kaydetme hatası:', err);
+        return false;
+    }
+}
 
 const app = {
     isAdmin: false, // Admin mi yoksa kullanıcı mı - Firebase'e GİTMEYECEK
@@ -611,7 +642,7 @@ const app = {
             const modal = document.getElementById('pinSwitchModal');
             if (!input) return;
 
-            if (input.value === CONSTANTS.DEFAULT_PIN) {
+            if (input.value === adminPin) {
                 app.isAdmin = true;
                 sessionStorage.setItem('isAdmin', 'true');
                 if (modal) modal.remove();
@@ -623,6 +654,94 @@ const app = {
                 input.classList.add('animate-shake', 'border-red-500');
                 setTimeout(() => input.classList.remove('animate-shake', 'border-red-500'), 500);
                 app.ui.toast('Hatalı PIN', 'error');
+            }
+        },
+
+        // PIN Değiştirme Modalı (Admin için)
+        showChangePinModal: () => {
+            if (!app.isAdmin) {
+                app.ui.toast('Bu işlem için admin olmalısınız', 'error');
+                return;
+            }
+
+            const existing = document.getElementById('changePinModal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'changePinModal';
+            modal.className = 'fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="bg-slate-900/95 rounded-2xl border border-white/10 shadow-2xl p-6 max-w-sm w-full animate-slide-up">
+                    <div class="text-center mb-6">
+                        <div class="w-14 h-14 bg-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <i class="fa-solid fa-key text-2xl text-purple-400"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">PIN Değiştir</h3>
+                        <p class="text-sm text-gray-400">Yeni admin PIN'inizi girin</p>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-xs text-gray-500 mb-1 block">Mevcut PIN</label>
+                            <input type="password" id="currentPinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*" 
+                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-center text-xl text-white font-mono tracking-[0.5em] focus:border-purple-500 outline-none" 
+                                placeholder="••••">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-1 block">Yeni PIN</label>
+                            <input type="password" id="newPinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*" 
+                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-center text-xl text-white font-mono tracking-[0.5em] focus:border-purple-500 outline-none" 
+                                placeholder="••••">
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="document.getElementById('changePinModal').remove()" 
+                                class="flex-1 py-3 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl font-bold text-sm transition">
+                                Vazgeç
+                            </button>
+                            <button onclick="app.ui.saveNewPin()" 
+                                class="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-purple-600/30 transition">
+                                <i class="fa-solid fa-save mr-2"></i>Kaydet
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            setTimeout(() => document.getElementById('currentPinInput')?.focus(), 100);
+        },
+
+        // Yeni PIN kaydet
+        saveNewPin: async () => {
+            const currentInput = document.getElementById('currentPinInput');
+            const newInput = document.getElementById('newPinInput');
+            const modal = document.getElementById('changePinModal');
+
+            if (!currentInput || !newInput) return;
+
+            // Mevcut PIN kontrolü
+            if (currentInput.value !== adminPin) {
+                currentInput.value = '';
+                currentInput.classList.add('animate-shake', 'border-red-500');
+                setTimeout(() => currentInput.classList.remove('animate-shake', 'border-red-500'), 500);
+                app.ui.toast('Mevcut PIN hatalı', 'error');
+                return;
+            }
+
+            // Yeni PIN kontrolü
+            if (newInput.value.length !== 4) {
+                newInput.classList.add('animate-shake', 'border-red-500');
+                setTimeout(() => newInput.classList.remove('animate-shake', 'border-red-500'), 500);
+                app.ui.toast('PIN 4 haneli olmalı', 'error');
+                return;
+            }
+
+            // Kaydet
+            const success = await saveAdminPin(newInput.value);
+            if (success) {
+                if (modal) modal.remove();
+                app.ui.toast('PIN başarıyla değiştirildi', 'success');
+            } else {
+                app.ui.toast('PIN kaydedilemedi', 'error');
             }
         },
 
@@ -2768,6 +2887,9 @@ const app = {
                             }
 
                             console.log(`✅ State güncellendi - ${data.flights?.length || 0} uçuş`);
+
+                            // Admin PIN'i Firestore'dan yükle
+                            loadAdminPin();
 
                             // AirLabs cache'i Firestore'dan yükle (bir kez)
                             if (Object.keys(airLabs.flightCache).length === 0) {

@@ -319,6 +319,9 @@
                         class="admin-only w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group cursor-pointer"><i
                             class="fa-solid fa-upload w-5 text-center"></i> Yedek Yükle <input type="file"
                             onchange="app.data.loadFromJson(this)" class="hidden" accept=".json"></label>
+                    <button onclick="app.ui.showChangePinModal()"
+                        class="admin-only w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-xl transition text-xs font-medium text-gray-400 hover:text-white text-left group"><i
+                            class="fa-solid fa-key w-5 text-center"></i> PIN Değiştir</button>
                     <div class="h-px bg-white/5 my-2"></div>
                     <button onclick="app.ui.confirmReset()"
                         class="admin-only w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 rounded-xl transition text-xs font-bold text-red-500 text-left group">

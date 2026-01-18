@@ -1,5 +1,5 @@
-// Follow-Me Ops - Service Worker v15.0 - API Key Security & Mobile Integration
-const CACHE_NAME = 'fm-ops-v15';
+// Follow-Me Ops - Service Worker v17.0 - Admin PIN Change Feature
+const CACHE_NAME = 'fm-ops-v17';
 const urlsToCache = [
     './',
     './index.html',
