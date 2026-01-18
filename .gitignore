@@ -1,0 +1,16 @@
+# Credentials
+credentials.json
+config.js
+
+# API Keys
+*.secret.js
+
+# Node modules
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
