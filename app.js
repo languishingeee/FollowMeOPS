@@ -407,7 +407,7 @@ const app = {
         // Admin girişi (tam yetki)
         loginAsAdmin: () => {
             const pin = document.getElementById('pinInput').value;
-            if (pin === CONSTANTS.DEFAULT_PIN) {
+            if (pin === adminPin) {
                 app.isAdmin = true;
                 sessionStorage.setItem('isLoggedIn', 'true');
                 sessionStorage.setItem('isAdmin', 'true');
