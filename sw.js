@@ -1,5 +1,5 @@
-// Follow-Me Ops - Service Worker v17.0 - Admin PIN Change Feature
-const CACHE_NAME = 'fm-ops-v17';
+// Follow-Me Ops - Service Worker v18.0 - System Reset & Excel Time Change Fixes
+const CACHE_NAME = 'fm-ops-v18';
 const urlsToCache = [
     './',
     './index.html',

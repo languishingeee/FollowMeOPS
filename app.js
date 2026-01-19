@@ -1478,7 +1478,10 @@ const app = {
             document.body.insertAdjacentHTML('beforeend', modalHtml);
         },
 
-        smartReset: () => {
+        smartReset: async () => {
+            // Önce AirLabs cache'ini temizle (Firestore'dan sil)
+            await airLabs.clearCache();
+
             const currentStaff = app.state.staff;
             app.state = {
                 flights: [],
@@ -1496,7 +1499,7 @@ const app = {
             };
             app.data.save(); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel();
             app.ui.toast("Sistem Temizlendi", "success");
-            document.getElementById('confirmModal').classList.add('hidden');
+            document.getElementById('confirmModal')?.classList.add('hidden');
         },
 
         // İstatistikleri Firestore'a arşivle
@@ -1919,12 +1922,12 @@ const app = {
 
                 if (app.localFilters.filterMode === 'focus' && !inFocus) return; if (app.localFilters.filterMode === 'completed' && !isDone) return; if (isDone && !app.localFilters.showCompleted && app.localFilters.filterMode !== 'completed') return;
                 // Güncellenmiş filtresi
-                if (app.localFilters.showUpdatedOnly && !f.wasUpdated && !f.gateUpdated && !(app.state.timeChanges && app.state.timeChanges[f.id])) return;
+                if (app.localFilters.showUpdatedOnly && !f.wasUpdated && !f.gateUpdated && !f.timeUpdated && !(app.state.timeChanges && app.state.timeChanges[f.id])) return;
                 // Personel filtresi
                 if (app.localFilters.staffFilter && app.state.assignments[f.id] !== app.localFilters.staffFilter) return;
                 if (inFocus && !isDone) counts.focus++; if (app.state.assignments[f.id]) counts.assigned++;
                 const originalGate = f.originalGate || ""; const savedGate = app.state.gates[f.id] !== undefined ? app.state.gates[f.id] : originalGate; const savedStaff = app.state.assignments[f.id] || ''; const isGateChanged = String(savedGate).trim() !== String(originalGate).trim();
-                const isTimeChanged = app.state.timeChanges && app.state.timeChanges[f.id] !== undefined;
+                const isTimeChanged = (app.state.timeChanges && app.state.timeChanges[f.id] !== undefined) || f.timeUpdated;
                 const isArr = f.type === 'ARR'; const typeClass = isArr ? 'card-arr' : 'card-dep'; const icon = isArr ? 'fa-plane-arrival' : 'fa-plane-departure'; const label = isArr ? 'GELİŞ' : 'GİDİŞ'; const iconColor = isArr ? 'text-emerald-400' : 'text-amber-400';
                 // Format flight number: airline code left, flight number right (PC | 3094)
                 const flightLetters = (f.flightNo.replace(/[0-9]/g, '').trim() || f.airline.split('/')[0].trim()).toUpperCase();
@@ -2117,12 +2120,31 @@ const app = {
                     const existing = app.state.flights.find(f => f.flightNo === flightNo && f.type === 'ARR' && f.isNextDay === isNextDay);
                     if (existing) {
                         const newGate = String(gate).trim();
+                        const newTimeStr = timeStr;
+                        let changed = false;
+
+                        // Saat değişikliği kontrolü
+                        if (existing.timeStr !== newTimeStr) {
+                            existing.timeStr = newTimeStr;
+                            existing.timestamp = (() => {
+                                const baseDate = app.state.baseDate ? new Date(app.state.baseDate) : new Date();
+                                const d = new Date(baseDate);
+                                if (isNextDay) d.setDate(d.getDate() + 1);
+                                d.setHours(h, mn, 0, 0);
+                                return d.getTime();
+                            })();
+                            existing.wasUpdated = true;
+                            existing.timeUpdated = true;
+                            changed = true;
+                        }
+
+                        // Kapı değişikliği kontrolü
                         if (existing.originalGate !== newGate) {
                             existing.originalGate = newGate;
                             app.state.gates[existing.id] = newGate;
                             existing.wasUpdated = true;
                             existing.gateUpdated = true;
-                            stats.updated++;
+                            changed = true;
 
                             // Bağlı uçuşu da güncelle (pairId ile)
                             if (existing.pairId) {
@@ -2134,7 +2156,10 @@ const app = {
                                     paired.gateUpdated = true;
                                 }
                             }
-                        } else { stats.unchanged++; }
+                        }
+
+                        if (changed) stats.updated++;
+                        else stats.unchanged++;
                     } else {
                         // Yeni uçuş ekle
                         const pairId = `pair-${idx}-${Math.random().toString(36).substr(2, 4)}`;
@@ -2155,12 +2180,31 @@ const app = {
                     const existing = app.state.flights.find(f => f.flightNo === flightNo && f.type === 'DEP' && f.isNextDay === isNextDay);
                     if (existing) {
                         const newGate = String(gate).trim();
+                        const newTimeStr = timeStr;
+                        let changed = false;
+
+                        // Saat değişikliği kontrolü
+                        if (existing.timeStr !== newTimeStr) {
+                            existing.timeStr = newTimeStr;
+                            existing.timestamp = (() => {
+                                const baseDate = app.state.baseDate ? new Date(app.state.baseDate) : new Date();
+                                const d = new Date(baseDate);
+                                if (isNextDay) d.setDate(d.getDate() + 1);
+                                d.setHours(h, mn, 0, 0);
+                                return d.getTime();
+                            })();
+                            existing.wasUpdated = true;
+                            existing.timeUpdated = true;
+                            changed = true;
+                        }
+
+                        // Kapı değişikliği kontrolü
                         if (existing.originalGate !== newGate) {
                             existing.originalGate = newGate;
                             app.state.gates[existing.id] = newGate;
                             existing.wasUpdated = true;
                             existing.gateUpdated = true;
-                            stats.updated++;
+                            changed = true;
 
                             // Bağlı uçuşu da güncelle (pairId ile)
                             if (existing.pairId) {
@@ -2172,7 +2216,10 @@ const app = {
                                     paired.gateUpdated = true;
                                 }
                             }
-                        } else { stats.unchanged++; }
+                        }
+
+                        if (changed) stats.updated++;
+                        else stats.unchanged++;
                     } else {
                         // Yeni uçuş ekle
                         const pairId = `pair-${idx}-${Math.random().toString(36).substr(2, 4)}`;
@@ -2680,7 +2727,7 @@ const app = {
                     notesY += 4;
                 }
                 doc.setTextColor(100, 116, 139);
-                doc.text("Not: Vardiya sorumluluk sahasinin ±20 dakika toleransindaki ucuslar rapora dahil edilmistir.", 14, notesY + 4);
+                doc.text("Not: Vardiya sorumluluk sahasinin ±60 dakika toleransindaki ucuslar rapora dahil edilmistir.", 14, notesY + 4);
             }
 
             doc.save(`FollowMe_Rapor_${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -2923,7 +2970,7 @@ const app = {
 
         saveToJson: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(app.state)], { type: 'application/json' })); a.download = `backup_${Date.now()}.json`; a.click(); },
         loadFromJson: (input) => { const f = input.files[0]; if (!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); if (!app.state.delayed) app.state.delayed = {}; app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.data.save(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
-        reset: () => { airLabs.clearCache(); app.ui.smartReset(); }
+        reset: async () => { await airLabs.clearCache(); app.ui.smartReset(); }
     }
 };
 window.addEventListener('DOMContentLoaded', app.init);
