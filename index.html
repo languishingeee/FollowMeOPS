@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Follow-Me Ops | Pro v18.1</title>
+    <title>Follow-Me OPS</title>
 
     <!-- PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -80,6 +80,7 @@
     <!-- Firebase SDK (Firestore) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
     <script>
         // Firebase Configuration
         const firebaseConfig = {
@@ -94,6 +95,13 @@
         firebase.initializeApp(firebaseConfig);
         // Firestore referansı (Realtime Database yerine)
         const db = firebase.firestore();
+        let messaging = null;
+        if (firebase.messaging.isSupported()) {
+            messaging = firebase.messaging();
+        } else {
+            console.warn('⚠️ Tarayıcı Web Push desteklemiyor');
+        }
+        
         // Offline persistence'ı etkinleştir
         db.enablePersistence({ synchronizeTabs: true })
             .then(() => console.log('✅ Firestore offline persistence etkin'))
@@ -128,11 +136,20 @@
                 <p class="text-xs text-gray-400 mb-6 font-mono uppercase tracking-widest">Ops Center</p>
 
                 <!-- Kullanıcı Girişi Butonu -->
-                <button onclick="app.ui.loginAsUser()"
+                <button onclick="app.ui.showStaffLoginList()"
                     class="w-full py-4 mb-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-sm tracking-widest uppercase flex items-center justify-center gap-3">
                     <i class="fa-solid fa-eye"></i> Kullanıcı Girişi
                 </button>
-                <p class="text-[10px] text-gray-500 mb-6">Sadece görüntüleme • Değişiklik yapılamaz</p>
+                <p class="text-[10px] text-gray-500 mb-2">Personel seçerek giriş yapın</p>
+
+                <!-- Personel Seçim Listesi (Gizli) -->
+                <div id="staffLoginList" class="hidden mb-6 mt-3 bg-black/40 border border-white/10 rounded-xl p-3 overflow-hidden text-left">
+                    <p class="text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider px-1">Personel Seçin</p>
+                    <div id="staffLoginOptions" class="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                        <!-- JS ile doldurulacak -->
+                        <div class="text-center text-xs text-gray-500 py-3"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Yükleniyor...</div>
+                    </div>
+                </div>
 
                 <div class="h-px bg-white/10 my-4"></div>
                 <p class="text-[10px] text-gray-400 mb-3 uppercase tracking-wider">veya Admin olarak giriş yapın</p>
@@ -150,6 +167,64 @@
                 </button>
                 <p class="text-[10px] text-gray-500 mt-2">Tam yetki • Değişiklik yapabilir</p>
             </div>
+        </div>
+    </div>
+
+    <!-- BİLDİRİM GÖNDER MODAL -->
+    <div id="notificationModal"
+        class="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="glass p-6 rounded-3xl w-full max-w-sm text-center border border-white/10 shadow-2xl relative">
+            <button onclick="app.ui.toggleNotificationModal()"
+                class="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 transition flex items-center justify-center">
+                <i class="fa-solid fa-times"></i>
+            </button>
+            <div class="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/30">
+                <i class="fa-solid fa-bell text-2xl text-blue-400"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-1">Bildirim Gönder</h3>
+            <p id="notifTarget" class="text-sm font-bold text-emerald-400 mb-5 tracking-widest border border-emerald-500/20 bg-emerald-500/10 py-2 rounded-lg"></p>
+
+            <div class="space-y-2 mb-4 text-left">
+                <p class="text-xs text-gray-400 uppercase tracking-wider font-bold px-1 mb-2">Hazır Mesajlar</p>
+                <button onclick="app.notifications.sendFromModal('🛬 Uçağınız son yaklaşmadadır')" class="w-full text-left px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-sm text-gray-200 transition border border-transparent hover:border-white/10">🛬 Uçağınız son yaklaşmadadır</button>
+                <button onclick="app.notifications.sendFromModal('⏱️ Uçağınızın inmesine 5 dk kalmıştır')" class="w-full text-left px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-sm text-gray-200 transition border border-transparent hover:border-white/10">⏱️ Uçağınızın inmesine 5 dk kalmıştır</button>
+                <button onclick="app.notifications.sendFromModal('✈️ Uçağınız push-back\'e başlıyor')" class="w-full text-left px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-sm text-gray-200 transition border border-transparent hover:border-white/10">✈️ Uçağınız push-back'e başlıyor</button>
+                <button onclick="app.notifications.sendFromModal('👏 Elinize sağlık, iyi çalışmalar')" class="w-full text-left px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-sm text-gray-200 transition border border-transparent hover:border-white/10">👏 Elinize sağlık, iyi çalışmalar</button>
+            </div>
+
+            <div class="relative mt-5">
+                <input type="text" id="customNotifMsg" placeholder="Özel mesaj yazın..."
+                    class="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:border-blue-500 outline-none transition placeholder-gray-600 pr-12">
+                <button onclick="app.notifications.sendFromModal(document.getElementById('customNotifMsg').value)" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-blue-500 hover:bg-blue-600 rounded-lg text-white flex items-center justify-center transition shadow-lg">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BİLDİRİM YAYINLA (BROADCAST) MODAL -->
+    <div id="broadcastModal"
+        class="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="glass p-6 rounded-3xl w-full max-w-sm text-center border border-emerald-500/30 shadow-2xl relative shadow-emerald-500/20">
+            <button onclick="document.getElementById('broadcastModal').classList.add('hidden')"
+                class="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 transition flex items-center justify-center">
+                <i class="fa-solid fa-times"></i>
+            </button>
+            <div class="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/30">
+                <i class="fa-solid fa-bullhorn text-2xl text-emerald-400"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-1">Tüm Personele Duyuru</h3>
+            <p class="text-xs text-gray-400 mb-5">Mesajınız aktif tüm personele gidecektir.</p>
+
+            <div class="relative mt-2">
+                <textarea id="customBroadcastMsg" placeholder="Duyuru mesajını buraya yazın..."
+                    class="w-full h-24 bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:border-emerald-500 outline-none transition placeholder-gray-600 resize-none"></textarea>
+            </div>
+            
+            <button onclick="app.notifications.broadcast(document.getElementById('customBroadcastMsg').value)"
+                class="w-full mt-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-paper-plane"></i> Gönder
+            </button>
         </div>
     </div>
 
@@ -351,8 +426,16 @@
                 </div>
             </div>
 
+            <!-- Broadcast Button -->
+            <div class="flex-1 flex justify-center items-center">
+                <button onclick="document.getElementById('broadcastModal').classList.remove('hidden')"
+                    class="admin-only px-4 py-1.5 rounded-xl text-[10px] md:text-xs font-bold uppercase transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 whitespace-nowrap shadow-lg shadow-emerald-500/10" style="display: none;">
+                    <i class="fa-solid fa-bullhorn mr-1"></i> Duyuru
+                </button>
+            </div>
+
             <!-- View Filters -->
-            <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+            <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0 justify-end">
                 <button onclick="app.ui.setFilter('all')" id="filter-all"
                     class="flex-1 md:flex-none px-4 py-1.5 rounded-xl text-[10px] font-bold uppercase transition text-white bg-white/10 border border-white/5 whitespace-nowrap">Tümü</button>
                 <button onclick="app.ui.setFilter('focus')" id="filter-focus"
@@ -658,77 +741,6 @@
             </div>
         </div>
 
-        <!-- Add Flight Modal -->
-        <div id="addFlightModal" onclick="if(event.target === this) app.ui.toggleAddFlightModal()"
-            class="hidden fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-            <div
-                class="glass bg-slate-900 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up border border-white/10">
-                <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
-                    <div class="flex items-center gap-4">
-                        <div
-                            class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
-                            <i class="fa-solid fa-plane-circle-plus text-xl"></i>
-                        </div>
-                        <h3 class="font-display font-bold text-2xl text-white tracking-wide">Manuel Uçuş Ekle</h3>
-                    </div>
-                    <button onclick="app.ui.toggleAddFlightModal()"
-                        class="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition text-gray-400 hover:text-white"><i
-                            class="fa-solid fa-times text-xl"></i></button>
-                </div>
-                <div class="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scroll">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Uçuş
-                                Tipi</label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button onclick="app.ui.selectFlightType('ARR')" id="af-type-arr"
-                                    class="py-3 rounded-xl text-xs font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white transition"><i
-                                        class="fa-solid fa-plane-arrival mr-1"></i> Geliş</button>
-                                <button onclick="app.ui.selectFlightType('DEP')" id="af-type-dep"
-                                    class="py-3 rounded-xl text-xs font-bold uppercase bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 transition"><i
-                                        class="fa-solid fa-plane-departure mr-1"></i> Gidiş</button>
-                            </div>
-                        </div>
-                        <div>
-                            <label
-                                class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Saat</label>
-                            <input type="time" id="af-time"
-                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-base text-white focus:border-blue-500 outline-none font-mono font-bold shadow-inner">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Uçuş
-                            Numarası</label>
-                        <input type="text" id="af-flightno" placeholder="TK1234"
-                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-base text-white focus:border-blue-500 outline-none font-bold uppercase shadow-inner placeholder-gray-600">
-                    </div>
-                    <div>
-                        <label
-                            class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Havayolu</label>
-                        <input type="text" id="af-airline" placeholder="TURKISH AIRLINES"
-                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-base text-white focus:border-blue-500 outline-none font-bold uppercase shadow-inner placeholder-gray-600">
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label
-                                class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Rota</label>
-                            <input type="text" id="af-route" placeholder="ISTANBUL"
-                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-base text-white focus:border-blue-500 outline-none font-bold uppercase shadow-inner placeholder-gray-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Kapı
-                                (Opsiyonel)</label>
-                            <input type="text" id="af-gate" placeholder="12"
-                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-base text-white focus:border-blue-500 outline-none font-mono font-bold shadow-inner placeholder-gray-600">
-                        </div>
-                    </div>
-                    <button onclick="app.logic.addManualFlight()"
-                        class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition transform active:scale-95 uppercase tracking-wide text-sm flex items-center justify-center gap-2"><i
-                            class="fa-solid fa-plus"></i> Uçuş Ekle</button>
-                </div>
-            </div>
-        </div>
-
         <!-- Excel Merge Modal -->
         <div id="excelMergeModal"
             class="hidden fixed inset-0 z-[150] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -814,8 +826,14 @@
 
         <datalist id="staffOptions"></datalist>
 
-        <script src="config.js"></script>
-        <script src="app.js" defer></script>
-</body>
 
+        <script src="app.js?v=46"></script>
+        <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js?v=46').then(reg => {
+                    reg.update(); // Her açılışta güncellemeyi zorla
+                });
+            }
+        </script>
+</body>
 </html>

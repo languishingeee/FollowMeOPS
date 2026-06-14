@@ -1,6 +1,6 @@
 {
-  "name": "Follow-Me Ops Center",
-  "short_name": "FM Ops",
+  "name": "Follow-Me OPS",
+  "short_name": "FM OPS",
   "description": "Havalimanı Follow-Me Operasyon Yönetim Sistemi",
   "start_url": "./index.html",
   "scope": "./",

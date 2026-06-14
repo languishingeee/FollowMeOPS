@@ -6,8 +6,12 @@ const CONSTANTS = {
     AUTO_SAVE_INTERVAL: 15000,
     MIN_SEARCH_LENGTH: 0,
     BREAK_GAP_THRESHOLD: 45,
-    PDF_BUFFER_MINUTES: 60
+    PDF_BUFFER_MINUTES: 60,
+    NEXT_DAY_THRESHOLD: 900 // 15:00 - bu dakikadan önceki uçuşlar ertesi güne aittir
 };
+
+// XSS koruması - kullanıcı girdilerini HTML'e güvenli enjekte etmek için
+const sanitize = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 // Admin PIN (Firestore'dan yüklenebilir)
 let adminPin = CONSTANTS.DEFAULT_PIN;
@@ -303,6 +307,14 @@ async function saveAdminPin(newPin) {
 const app = {
     isAdmin: false, // Admin mi yoksa kullanıcı mı - Firebase'e GİTMEYECEK
     canWrite: true, // Yazma izni - visibility kontrolü için
+    _unsubscribe: null, // Firestore listener unsubscribe fonksiyonu
+    currentUser: null, // Giriş yapan kullanıcının kimliği: { name: 'AHMET Y.', role: 'user' }
+    
+    // Güvenilir Türkçe Büyük Harf Dönüştürücü (Cihaz/Tarayıcı bağımsız)
+    trUpper: (str) => {
+        if (!str) return '';
+        return str.replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase();
+    },
 
     // LOKAL FİLTRELER - Firebase'e GİTMEYECEK, herkes kendi filtresini bağımsız seçer
     localFilters: {
@@ -318,12 +330,168 @@ const app = {
         shift: 'day', // Vardiya - Admin belirler, herkes görür
         customStart: 480, // 08:00 - Admin belirler
         customEnd: 1200, // 20:00 - Admin belirler
-        staff: ['AHMET Y.', 'MEHMET K.', 'AYŞE D.', 'FATMA S.', 'CAN B.'],
-        assignments: {}, gates: {}, overrides: {}, completed: [], delayed: {}, timeChanges: {},
-        baseDate: null,
-        history: [], // Son 10 işlem için geri alma
+        staff: ['AHMET Y.', 'MEHMET K.', 'AYŞE D.', 'FATMA S.', 'CAN B.'], // Personel listesi
+        assignments: {}, // Uçuş -> Personel eşleşmeleri
+        gates: {}, // Değişen kapılar
+        overrides: {}, // Gizlenen/Odaklanan uçuşlar
+        completed: [], // Tamamlanan uçuşlar
+        delayed: {}, // Geciken uçuşlar (Manuel flag)
+        timeChanges: {}, // Değişen saatler
+        baseDate: null, // Verinin ait olduğu tarih
+        history: [], // Geri alma geçmişi (max 10 işlem)
         flightHistory: {}, // Uçuş değişiklik geçmişi
         lastUpdated: 0 // Son güncelleme timestamp'ı - çakışma kontrolü için
+    },
+    currentUser: null, // Giriş yapan kullanıcının kimliği: { name: 'AHMET Y.', role: 'user' }
+    notifications: {
+        _listener: null,
+        _pendingFlightId: null,
+        vapidKey: 'BDD6j54TmZdLQtgSy2cq-qCpb39wZ_Xy_9o3PRuugZdlvHWuDOtsr1Df9vSzAZguFj_Hd16w0eDcP6MhdInHk8o',
+
+        requestPermission: async (staffName) => {
+            if (!messaging) return;
+            try {
+                const perm = await Notification.requestPermission();
+                if (perm === 'granted') {
+                    console.log('✅ Bildirim izni verildi');
+                    
+                    // Service Worker kayıt bilgisini al
+                    const registration = await navigator.serviceWorker.ready;
+                    
+                    // FCM Token Al
+                    const currentToken = await messaging.getToken({
+                        vapidKey: app.notifications.vapidKey,
+                        serviceWorkerRegistration: registration
+                    });
+
+                    if (currentToken && staffName) {
+                        // 1. ADIM: Bu cihazın token'ı eskiden başka bir personele kayıtlıysa onu SİL (Kullanıcı değiştirme bug'ı çözümü)
+                        const oldTokens = await db.collection('staffTokens').where('token', '==', currentToken).get();
+                        oldTokens.forEach(doc => {
+                            if (doc.id !== staffName) {
+                                console.log(`Eski kullanıcı kaydı siliniyor: ${doc.id}`);
+                                doc.ref.delete();
+                            }
+                        });
+
+                        // 2. ADIM: Token'ı sadece ŞU ANKİ AKTİF personele kaydet
+                        await db.collection('staffTokens').doc(staffName).set({
+                            token: currentToken,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                        console.log('✅ FCM Token aktif kullanıcıya kaydedildi');
+                    }
+                }
+            } catch (err) {
+                console.error('FCM Token hatası:', err);
+            }
+        },
+
+        startListening: (staffName) => {
+            if (typeof db === 'undefined' || !staffName) return;
+            
+            // FCM Ön Planda (Foreground) bildirim dinleyici
+            // Sadece sessizce yutuyoruz çünkü onSnapshot zaten aşağıda işliyor. Bu sayede çift bildirim engelleniyor.
+            if (messaging) {
+                messaging.onMessage((payload) => {
+                    console.log("Foreground FCM yutuldu (çift bildirimi engellemek için).");
+                });
+            }
+
+            // Asıl uygulama içi Toast bildirimlerini Firestore tetikler
+            if (app.notifications._listener) {
+                app.notifications._listener();
+            }
+            console.log(`🔔 Bildirimler dinleniyor: ${staffName}`);
+            app.notifications._listener = db.collection('notifications')
+                .where('to', '==', staffName)
+                .where('read', '==', false)
+                .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added') {
+                            const data = change.doc.data();
+                            // 30 saniyeden eski bildirimleri yut (Eski bildirimlerin uygulamayı açınca çıkmasını engeller)
+                            const now = Date.now();
+                            if (data.timestamp && (now - data.timestamp) > 30000) {
+                                console.log('Eski bildirim sessizce yutuldu:', data);
+                            } else {
+                                app.notifications.show(data);
+                            }
+                            // Okundu olarak işaretle
+                            change.doc.ref.update({ read: true });
+                        }
+                    });
+                });
+        },
+
+        show: (data) => {
+            // Sadece uygulama içi uyarı (Toast) göster, native bildirimleri sadece sw.js (arka plan) halledecek
+            app.ui.toast(`✈️ ${data.flightNo}: ${data.message}`, 'info');
+        },
+
+        send: async (staffName, flightNo, message) => {
+            if (typeof db === 'undefined') return;
+            try {
+                await db.collection('notifications').add({
+                    to: staffName,
+                    flightNo: flightNo,
+                    message: message,
+                    from: 'admin',
+                    timestamp: Date.now(),
+                    read: false
+                });
+            } catch (err) {
+                console.error('Bildirim gönderme hatası:', err);
+                app.ui.toast('Bildirim gönderilemedi', 'error');
+            }
+        },
+
+        openModal: (flightId) => {
+            const f = app.state.flights.find(x => x.id === flightId);
+            const staff = app.state.assignments[flightId];
+            if (!f || !staff) {
+                app.ui.toast('Önce uçuşa personel atamalısınız', 'error');
+                return;
+            }
+            document.getElementById('notifTarget').textContent = `${staff} — ${f.flightNo}`;
+            app.notifications._pendingFlightId = flightId;
+            document.getElementById('customNotifMsg').value = '';
+            document.getElementById('notificationModal').classList.remove('hidden');
+        },
+
+        sendFromModal: (msg) => {
+            if (!msg) return;
+            const flightId = app.notifications._pendingFlightId;
+            const f = app.state.flights.find(x => x.id === flightId);
+            const staff = app.state.assignments[flightId];
+            const savedGate = app.state.gates[flightId] || f.gate || "Belirsiz";
+            const flightLetters = (f.flightNo.replace(/[0-9]/g, '').trim() || f.airline.split('/')[0].trim()).toUpperCase();
+            const flightNumbers = f.flightNo.replace(/[^0-9]/g, '').trim() || f.flightNo;
+            const fullFlightNo = `${flightLetters}${flightNumbers}`;
+            
+            const titleWithGate = `${fullFlightNo} (Park: ${savedGate})`;
+            
+            app.notifications.send(staff, titleWithGate, msg);
+            document.getElementById('notificationModal').classList.add('hidden');
+            app.ui.toast(`${staff} kişisine bildirim gönderildi`, 'success');
+        },
+
+        broadcast: (msg) => {
+            if (!msg) return;
+            if (!app.state.staff || app.state.staff.length === 0) {
+                app.ui.toast('Kayıtlı personel bulunamadı', 'error');
+                return;
+            }
+            
+            // Send the broadcast to all staff
+            app.state.staff.forEach(person => {
+                app.notifications.send(person, "📢 TÜM PERSONELE DUYURU", msg);
+            });
+            
+            document.getElementById('broadcastModal').classList.add('hidden');
+            document.getElementById('customBroadcastMsg').value = '';
+            app.ui.toast('Tüm personele duyuru gönderildi', 'success');
+        }
     },
     init: () => {
         app.data.load(); app.ui.startClock(); app.ui.renderStaff(); app.ui.updateShiftUI(); app.ui.setFilter(app.localFilters.filterMode); app.ui.updateCompletedBtn(); app.ui.updateHeaderShiftLabel();
@@ -339,6 +507,12 @@ const app = {
         } else {
             // Session'dan admin durumunu yükle
             app.isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+            const savedUser = sessionStorage.getItem('currentUser');
+            if (savedUser) {
+                app.currentUser = { name: savedUser, role: app.isAdmin ? 'admin' : 'user' };
+                app.notifications.requestPermission(savedUser);
+                app.notifications.startListening(savedUser);
+            }
             document.getElementById('appContent').classList.remove('hidden');
             document.getElementById('appContent').classList.remove('opacity-0');
             document.getElementById('loginScreen').classList.add('hidden');
@@ -385,23 +559,51 @@ const app = {
             }
         });
 
-        setInterval(app.data.save, CONSTANTS.AUTO_SAVE_INTERVAL);
+        setInterval(() => { if (app.isAdmin && app.canWrite && app.state.flights.length > 0) app.data.save(); }, CONSTANTS.AUTO_SAVE_INTERVAL);
 
-        // Service Worker kaydı (PWA)
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('✅ Service Worker kaydedildi'))
-                .catch(err => console.log('❌ SW hatası:', err));
-        }
+        // SW Kaydı index.html üzerinden yürütülüyor (Bypass Cache için)
     },
     ui: {
-        // Kullanıcı girişi (sadece okuma)
-        loginAsUser: () => {
+        // Personel Listesini Göster
+        showStaffLoginList: () => {
+            const listDiv = document.getElementById('staffLoginList');
+            const container = document.getElementById('staffLoginOptions');
+            
+            listDiv.classList.toggle('hidden');
+            
+            if (!listDiv.classList.contains('hidden')) {
+                container.innerHTML = '';
+                // Firestore'dan taze oku veya cache kullan
+                const staff = app.state.staff || [];
+                
+                if (staff.length === 0) {
+                    container.innerHTML = '<div class="text-center text-xs text-gray-500 py-3">Personel bulunamadı</div>';
+                    return;
+                }
+                
+                staff.forEach(name => {
+                    const btn = document.createElement('button');
+                    btn.textContent = name;
+                    btn.className = 'w-full text-left px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-gray-200 transition border border-transparent hover:border-white/10 mb-1';
+                    btn.onclick = () => app.ui.loginAsStaff(name);
+                    container.appendChild(btn);
+                });
+            }
+        },
+
+        // Kullanıcı girişi (sadece okuma, personelle)
+        loginAsStaff: (staffName) => {
             app.isAdmin = false;
+            app.currentUser = { name: staffName, role: 'user' };
             sessionStorage.setItem('isLoggedIn', 'true');
             sessionStorage.setItem('isAdmin', 'false');
+            sessionStorage.setItem('currentUser', staffName);
             app.ui.completeLogin();
-            app.ui.toast('Kullanıcı olarak giriş yapıldı', 'info');
+            app.ui.toast(`${staffName} olarak giriş yapıldı`, 'info');
+            
+            // Bildirim izni iste ve dinleyiciyi başlat
+            app.notifications.requestPermission(staffName);
+            app.notifications.startListening(staffName);
         },
 
         // Admin girişi (tam yetki)
@@ -440,6 +642,8 @@ const app = {
         // Saat input focus handler - değeri temizle ve placeholder göster
         handleTimeInputFocus: (input) => {
             if (!app.isAdmin) return;
+            if (app._isRestoringFocus) return; // Programatik (React-vari) odaklama sırasında silmeyi engelle
+
             input.dataset.original = input.value; // Orijinal değeri sakla
             input.value = '';
             input.placeholder = 'HH:MM';
@@ -1135,7 +1339,7 @@ const app = {
 
         // Admin kontrolü - düzenleme işlemlerinden önce çağrılır
         requireAdmin: (action) => {
-            if (!app.state.isAdmin) {
+            if (!app.isAdmin) {
                 app.ui.toast('Bu işlem için admin yetkisi gerekli', 'error');
                 return false;
             }
@@ -1145,10 +1349,12 @@ const app = {
         // Eski checkPin uyumluluk için
         checkPin: () => { app.ui.loginAsAdmin(); },
         toast: (msg, type = 'info') => {
-            const c = document.getElementById('toastContainer'); const d = document.createElement('div');
+            const c = document.getElementById('toastContainer');
+            while (c.children.length >= 3) c.removeChild(c.firstChild);
+            const d = document.createElement('div');
             const cls = { success: 'border-emerald-500 bg-emerald-500/20 shadow-emerald-500/10 text-emerald-200', error: 'border-red-500 bg-red-500/20 shadow-red-500/10 text-red-200', info: 'border-blue-500 bg-blue-500/20 shadow-blue-500/10 text-blue-200' };
             d.className = `p-3 rounded-xl border-l-4 backdrop-blur-xl shadow-2xl text-xs font-bold text-white animate-slide-in pointer-events-auto flex items-center gap-3 uppercase tracking-wide ${cls[type] || cls.info}`;
-            d.innerHTML = `<span>${msg}</span>`; c.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateY(-10px)'; setTimeout(() => d.remove(), 300); }, 3000);
+            d.innerHTML = `<span>${sanitize(msg)}</span>`; c.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateY(-10px)'; setTimeout(() => d.remove(), 300); }, 3000);
         },
         startClock: () => { setInterval(() => { const now = new Date(); document.getElementById('liveClock').innerText = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }, 1000); },
         clearSearch: () => { const el = document.getElementById('searchInput'); const elMob = document.getElementById('searchInputMobile'); if (el) el.value = ''; if (elMob) elMob.value = ''; app.ui.render(); },
@@ -1161,6 +1367,8 @@ const app = {
                 else { btn.className = "px-4 md:px-6 py-1.5 md:py-2 rounded-xl text-[10px] font-bold uppercase transition text-gray-400 hover:text-white border border-transparent hover:bg-white/5"; }
             }); app.ui.render();
         },
+        toggleLoginModal: () => { const m = document.getElementById('loginModal'); if (m) m.classList.toggle('hidden'); },
+        toggleNotificationModal: () => { const m = document.getElementById('notificationModal'); if (m) m.classList.toggle('hidden'); },
         toggleMenu: () => { const m = document.getElementById('mainMenu'); if (m) m.classList.toggle('hidden'); },
         closeMenus: (e) => { if (!e.target.closest('button') && !e.target.closest('#mainMenu') && !e.target.closest('#mobileSearch')) { document.getElementById('mainMenu').classList.add('hidden'); } },
         toggleSettings: () => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } const m = document.getElementById('staffModal'); if (m) m.classList.toggle('hidden'); },
@@ -1493,9 +1701,11 @@ const app = {
                 overrides: {},
                 completed: [],
                 delayed: {},
-                showCompleted: true,
-                filterMode: 'all',
-                baseDate: null
+                timeChanges: {},
+                baseDate: null,
+                history: [],
+                flightHistory: {},
+                lastUpdated: Date.now()
             };
             app.data.save(); app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel();
             app.ui.toast("Sistem Temizlendi", "success");
@@ -1900,15 +2110,31 @@ const app = {
             const disabledAttr = isAdmin ? '' : 'disabled';
             const adminOnlyClass = isAdmin ? '' : 'pointer-events-none opacity-50';
 
-            // DocumentFragment ile batch DOM insertion (MOBİL PERFORMANS)
-            const fragment = document.createDocumentFragment();
+            // Mevcut odaklanmış öğeyi ve değerini sakla (Reactivity kesintilerini önlemek için)
+            const activeEl = document.activeElement;
+            const activeId = activeEl && activeEl.id ? activeEl.id : null;
+            const activeValue = activeId && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') ? activeEl.value : null;
+            let activeSelStart = null;
+            let activeSelEnd = null;
+            if (activeId && activeEl.tagName === 'INPUT' && (activeEl.type === 'text' || activeEl.type === 'search')) {
+                try {
+                    activeSelStart = activeEl.selectionStart;
+                    activeSelEnd = activeEl.selectionEnd;
+                    // HTML innerHTML karşılaştırmasında eşleşmesi için attribute'u güncelle
+                    activeEl.setAttribute('value', activeValue);
+                } catch(e) {}
+            }
+
+            // DOM Diffing için yeni eleman listesi
+            const newElements = [];
+            const completedSet = new Set(app.state.completed);
 
             sorted.forEach((f, idx) => {
                 const searchStr = (f.flightNo + f.airline + f.gate + f.route + f.type + f.rawAirline + f.flightNoOnly).toLowerCase().replace(/\s+/g, '');
                 let match = searchStr.includes(term);
                 if (!match && term.length > 0) { const aliases = f.rawAirline.split('/').map(x => x.trim().toLowerCase()); match = aliases.some(a => (a + f.flightNoOnly).includes(term)); }
                 if (term && !match) return;
-                const isDone = app.state.completed.includes(f.id);
+                const isDone = completedSet.has(f.id);
 
                 let inFocus = false;
                 if (app.state.overrides[f.id] === 'focus') inFocus = true;
@@ -1974,7 +2200,27 @@ const app = {
                     updateBadge = `<div class="absolute top-0 left-0 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-br-xl z-20 flex items-center gap-1.5 animate-pulse shadow-lg"><i class="fa-solid fa-plus"></i> YENİ EKLENEN</div>`;
                 }
 
+                // Bildirim Butonu (sadece admin + personel atanmışsa)
+                let notifBtn = '';
+                if (app.isAdmin && savedStaff) {
+                    notifBtn = `<button onclick="event.stopPropagation(); app.notifications.openModal('${f.id}')" class="w-full mt-1 py-2 rounded-lg bg-gradient-to-r from-blue-600/20 to-blue-500/10 hover:from-blue-600/30 hover:to-blue-500/20 text-blue-300 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border border-blue-500/30 hover:border-blue-400/50 transition shadow-lg backdrop-blur-sm" title="Personele Bildirim Gönder"><i class="fa-solid fa-paper-plane"></i> Bildirim Gönder</button>`;
+                }
+
+                // Aktif input değerlerini koruma
+                const timeMId = `time-m-${f.id}`;
+                const timeMVal = (activeId === timeMId) ? activeValue : f.timeStr;
+                
+                const timeDId = `time-d-${f.id}`;
+                const timeDVal = (activeId === timeDId) ? activeValue : f.timeStr;
+                
+                const gateId = `gate-${f.id}`;
+                const gateVal = (activeId === gateId) ? activeValue : savedGate;
+                
+                const staffId = `staff-${f.id}`;
+                const staffVal = (activeId === staffId) ? activeValue : savedStaff;
+
                 const el = document.createElement('div');
+                el.id = `flight-card-${f.id}`;
                 el.className = `flight-card rounded-2xl flex flex-col md:flex-row min-h-auto md:min-h-[110px] ${typeClass} ${inFocus && !isDone ? 'in-focus' : 'is-dimmed'} ${isDone ? 'is-completed' : ''} ${delayClass} ${timeChangedClass} ${gateChangedClass} mb-3 md:mb-4 relative overflow-hidden shadow-lg`;
                 const completedOverlay = isDone ? `<div class="absolute right-4 top-3 z-50 pointer-events-none transform -rotate-6 opacity-70"><div class="border-2 border-emerald-500/50 text-emerald-400 font-display font-bold text-xs px-3 py-1 rounded-lg uppercase tracking-widest backdrop-blur-sm bg-emerald-500/10">✓ TAMAMLANDI</div></div>` : '';
                 el.innerHTML = `${completedOverlay}${delayBadge}${updateBadge}${apiDelayBadge}
@@ -1982,14 +2228,14 @@ const app = {
                     <div class="flex items-center gap-3 md:hidden w-full">
                         <div class="w-14 h-14 rounded-xl bg-gradient-to-br ${isArr ? 'from-emerald-500/30 to-emerald-600/20' : 'from-amber-500/30 to-amber-600/20'} flex items-center justify-center border-2 ${isArr ? 'border-emerald-500/50' : 'border-amber-500/50'}"><i class="fa-solid ${icon} ${iconColor} text-3xl"></i></div>
                         <div class="flex-1 flex flex-col gap-1">
-                            <input type="text" value="${f.timeStr}" data-original="${f.timeStr}" maxlength="5" onfocus="app.ui.handleTimeInputFocus(this)" oninput="app.ui.handleTimeInputChange(this)" onblur="app.ui.handleTimeInputBlur(this, '${f.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" class="w-full text-xl font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-2 py-1.5 text-center focus:border-blue-500 outline-none ${timeChangedClass} ${adminOnlyClass}" ${disabledAttr}>
+                            <input type="text" id="${timeMId}" value="${timeMVal}" data-original="${f.timeStr}" maxlength="5" onfocus="app.ui.handleTimeInputFocus(this)" oninput="app.ui.handleTimeInputChange(this)" onblur="app.ui.handleTimeInputBlur(this, '${f.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" class="w-full text-xl font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-2 py-1.5 text-center focus:border-blue-500 outline-none ${timeChangedClass} ${adminOnlyClass}" ${disabledAttr}>
                             <div class="text-sm font-extrabold ${isArr ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30' : 'text-amber-400 bg-amber-500/20 border-amber-500/30'} px-2 py-1 rounded-lg uppercase text-center border">${isArr ? '✈ İNİŞ' : '✈ KALKIŞ'}</div>
                         </div>
                         ${(app.state.flightHistory && app.state.flightHistory[f.id] && app.state.flightHistory[f.id].length > 0) ? `<button onclick="app.ui.showFlightHistory('${f.id}')" class="w-8 h-8 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 flex items-center justify-center border border-blue-500/30" title="Değişiklik Geçmişi"><i class="fa-solid fa-history text-xs"></i></button>` : ''}
                     </div>
                     <div class="hidden md:flex md:flex-col md:items-center md:text-center w-full gap-1">
                         <div class="w-14 h-14 rounded-xl bg-gradient-to-br ${isArr ? 'from-emerald-500/30 to-emerald-600/20' : 'from-amber-500/30 to-amber-600/20'} flex items-center justify-center border-2 ${isArr ? 'border-emerald-500/50' : 'border-amber-500/50'}"><i class="fa-solid ${icon} ${iconColor} text-2xl"></i></div>
-                        <input type="text" value="${f.timeStr}" data-original="${f.timeStr}" maxlength="5" onfocus="app.ui.handleTimeInputFocus(this)" oninput="app.ui.handleTimeInputChange(this)" onblur="app.ui.handleTimeInputBlur(this, '${f.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" class="w-full text-lg font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-1 py-1 text-center focus:border-blue-500 outline-none ${timeChangedClass} ${adminOnlyClass}" ${disabledAttr}>
+                        <input type="text" id="${timeDId}" value="${timeDVal}" data-original="${f.timeStr}" maxlength="5" onfocus="app.ui.handleTimeInputFocus(this)" oninput="app.ui.handleTimeInputChange(this)" onblur="app.ui.handleTimeInputBlur(this, '${f.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" class="w-full text-lg font-mono font-bold text-white bg-black/30 border ${timeChangedClass ? 'border-blue-500 border-2' : 'border-white/10'} rounded-lg px-1 py-1 text-center focus:border-blue-500 outline-none ${timeChangedClass} ${adminOnlyClass}" ${disabledAttr}>
                         <span class="text-[8px] font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">${dateLabel}</span>
                         <div class="text-xs font-extrabold ${isArr ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30' : 'text-amber-400 bg-amber-500/20 border-amber-500/30'} px-2 py-0.5 rounded-md uppercase border">${isArr ? 'İNİŞ' : 'KALKIŞ'}</div>
                     </div>
@@ -2009,7 +2255,7 @@ const app = {
                     <div class="flex gap-2">
                         <div class="gate-input-wrapper rounded-lg p-1 bg-black/30 border ${isGateChanged ? 'border-amber-500 gate-changed' : 'border-white/10'}">
                             <label class="block text-[7px] text-gray-500 font-bold uppercase text-center tracking-wider">KAPI</label>
-                            <input type="text" value="${savedGate}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-extrabold text-3xl text-white tracking-widest h-9 w-16 ${adminOnlyClass}" placeholder="---" ${disabledAttr}>
+                            <input type="text" id="${gateId}" value="${gateVal}" onchange="app.logic.updateGate('${f.id}', this.value)" class="ghost text-center font-mono font-extrabold text-3xl text-white tracking-widest h-9 w-16 ${adminOnlyClass}" placeholder="---" ${disabledAttr}>
                         </div>
                         <div class="flex flex-col gap-1">
                             <button onclick="app.logic.toggleOverride('${f.id}', '${inFocus ? 'hide' : 'focus'}')" class="w-9 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition flex items-center justify-center ${adminOnlyClass}" title="${inFocus ? 'Gizle' : 'Odakla'}" ${disabledAttr}><i class="fa-solid ${inFocus ? 'fa-eye-slash' : 'fa-thumbtack'} text-[10px]"></i></button>
@@ -2019,16 +2265,55 @@ const app = {
                     </div>
                     <div class="relative">
                         <i class="fa-solid fa-user text-[10px] text-gray-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
-                        <input list="staffOptions" value="${savedStaff}" onchange="app.logic.assignStaff('${f.id}', this.value)" placeholder="Personel..." class="w-full bg-black/20 hover:bg-black/30 focus:bg-blue-500/10 border border-white/10 focus:border-blue-500/50 rounded-lg text-xs font-bold text-white py-2 pl-8 pr-2 outline-none transition uppercase placeholder-gray-600 ${adminOnlyClass}" ${disabledAttr}>
+                        <input list="staffOptions" id="${staffId}" value="${staffVal}" oninput="if(app.state.staff.includes(app.trUpper(this.value))) this.blur();" onchange="app.logic.assignStaff('${f.id}', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" placeholder="Personel..." class="w-full bg-black/20 hover:bg-black/30 focus:bg-blue-500/10 border border-white/10 focus:border-blue-500/50 rounded-lg text-xs font-bold text-white py-2 pl-8 pr-2 outline-none transition uppercase placeholder-gray-600 ${adminOnlyClass}" ${disabledAttr}>
                     </div>
+                    ${notifBtn}
                 </div>
             `;
                 // Sağ tık için context menu event'i ekle (Admin için)
                 el.oncontextmenu = (e) => app.ui.showFlightContextMenu(e, f.id);
-                fragment.appendChild(el);
+                newElements.push(el);
             });
-            grid.innerHTML = '';
-            grid.appendChild(fragment);
+            
+            // DOM Diffing & Reconciliation
+            const currentCards = Array.from(grid.children);
+            const currentMap = new Map();
+            currentCards.forEach(c => { if (c.id) currentMap.set(c.id, c); });
+
+            newElements.forEach((newEl, index) => {
+                const oldEl = currentMap.get(newEl.id);
+                if (oldEl) {
+                    if (oldEl.innerHTML !== newEl.innerHTML) {
+                        oldEl.innerHTML = newEl.innerHTML;
+                        oldEl.oncontextmenu = newEl.oncontextmenu;
+                    }
+                    if (oldEl.className !== newEl.className) {
+                        oldEl.className = newEl.className;
+                    }
+                    if (grid.children[index] !== oldEl) {
+                        grid.insertBefore(oldEl, grid.children[index] || null);
+                    }
+                    currentMap.delete(newEl.id);
+                } else {
+                    grid.insertBefore(newEl, grid.children[index] || null);
+                }
+            });
+
+            currentMap.forEach(oldEl => oldEl.remove());
+
+            // Odaklanmış öğeyi geri yükle
+            if (activeId) {
+                const elToFocus = document.getElementById(activeId);
+                if (elToFocus) {
+                    app._isRestoringFocus = true;
+                    elToFocus.focus();
+                    app._isRestoringFocus = false;
+                    
+                    if (activeSelStart !== null) {
+                        try { elToFocus.setSelectionRange(activeSelStart, activeSelEnd); } catch(e) {}
+                    }
+                }
+            }
             document.getElementById('statTotal').innerText = sorted.length; document.getElementById('statFocus').innerText = counts.focus; document.getElementById('statDone').innerText = counts.done; document.getElementById('statAssigned').innerText = counts.assigned;
             // Personel filtre indicator'larını güncelle (hem desktop hem mobil)
             const indicator = document.getElementById('staffFilterIndicator');
@@ -2044,7 +2329,12 @@ const app = {
         },
         renderStaff: () => {
             const counts = {}; app.state.staff.forEach(s => counts[s] = 0); app.state.completed.forEach(fid => { const s = app.state.assignments[fid]; if (s && counts.hasOwnProperty(s)) counts[s]++; });
-            document.getElementById('staffOptions').innerHTML = app.state.staff.map(s => `<option value="${s}">`).join('');
+            
+            // Datalist seçeneklerine küçük harfli "search helper" ekle, böylece tarayıcı klavyeden küçük i girilse bile bulabilsin
+            document.getElementById('staffOptions').innerHTML = app.state.staff.map(s => {
+                const searchHelper = s.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
+                return `<option value="${s}">${searchHelper}</option>`;
+            }).join('');
 
             // Aktif filtre gösterimi
             const filterHeader = app.localFilters.staffFilter ? `
@@ -2272,6 +2562,9 @@ const app = {
             const toMins = (v) => { if (typeof v === 'number') return Math.round(v * 1440); if (typeof v === 'string' && v.includes(':')) { const [h, mn] = v.split(':').map(Number); return h * 60 + mn; } return null; };
             const data = rows.slice(hIdx + 1);
             let stats = { updated: 0, added: 0, unchanged: 0 };
+            // Uçuş arama için Map (O(1) performans)
+            const flightMap = new Map();
+            app.state.flights.forEach(f => { flightMap.set(`${f.flightNo}-${f.type}-${f.isNextDay}`, f); });
             data.forEach((row, idx) => {
                 if (!row || !row[m.arrNo] && !row[m.depNo]) return;
                 const air = row[m.airline] || ""; const gate = row[m.gate] || "";
@@ -2281,8 +2574,8 @@ const app = {
                     const h = Math.floor(tm / 60), mn = tm % 60;
                     const timeStr = `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`;
                     const flightNo = String(row[m.arrNo]).trim();
-                    const isNextDay = tm < 900; // 15:00'dan önce ertesi gün (parse ile tutarlı)
-                    const existing = app.state.flights.find(f => f.flightNo === flightNo && f.type === 'ARR' && f.isNextDay === isNextDay);
+                    const isNextDay = tm < CONSTANTS.NEXT_DAY_THRESHOLD;
+                    const existing = flightMap.get(`${flightNo}-ARR-${isNextDay}`);
                     if (existing) {
                         const newGate = String(gate).trim();
                         const newTimeStr = timeStr;
@@ -2341,8 +2634,8 @@ const app = {
                     const h = Math.floor(tm / 60), mn = tm % 60;
                     const timeStr = `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`;
                     const flightNo = String(row[m.depNo]).trim();
-                    const isNextDay = tm < 900; // 15:00'dan önce ertesi gün (parse ile tutarlı)
-                    const existing = app.state.flights.find(f => f.flightNo === flightNo && f.type === 'DEP' && f.isNextDay === isNextDay);
+                    const isNextDay = tm < CONSTANTS.NEXT_DAY_THRESHOLD;
+                    const existing = flightMap.get(`${flightNo}-DEP-${isNextDay}`);
                     if (existing) {
                         const newGate = String(gate).trim();
                         const newTimeStr = timeStr;
@@ -2422,7 +2715,7 @@ const app = {
             data.forEach((row, idx) => {
                 const air = row[m.airline] || ""; const gate = row[m.gate] || ""; const routeRaw = row[m.route] || ""; let from = routeRaw, to = routeRaw; if (routeRaw.includes("-")) { const p = routeRaw.split("-"); from = p[0].trim(); to = p[1].trim(); }
                 const pairId = `pair-${idx}-${Math.random().toString(36).substr(2, 4)}`;
-                const createFlight = (t, type, no, route, pair) => { const isNextDay = t < 900; const d = new Date(baseDate); if (isNextDay) d.setDate(d.getDate() + 1); const h = Math.floor(t / 60), mn = t % 60; d.setHours(h, mn, 0, 0); const fClean = String(no).trim(); const numMatch = fClean.match(/\d+/); const fNum = numMatch ? numMatch[0] : fClean; return { id: `${type}-${idx}-${Math.random().toString(36).substr(2, 5)}`, type: type, flightNo: fClean, flightNoOnly: fNum, rawAirline: String(air).trim(), airline: String(air).split('/')[0].trim(), gate: String(gate).trim(), originalGate: String(gate).trim(), route: route, timestamp: d.getTime(), timeStr: `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`, isNextDay: isNextDay, pairId: pair }; };
+                const createFlight = (t, type, no, route, pair) => { const isNextDay = t < CONSTANTS.NEXT_DAY_THRESHOLD; const d = new Date(baseDate); if (isNextDay) d.setDate(d.getDate() + 1); const h = Math.floor(t / 60), mn = t % 60; d.setHours(h, mn, 0, 0); const fClean = String(no).trim(); const numMatch = fClean.match(/\d+/); const fNum = numMatch ? numMatch[0] : fClean; return { id: `${type}-${idx}-${Math.random().toString(36).substr(2, 5)}`, type: type, flightNo: fClean, flightNoOnly: fNum, rawAirline: String(air).trim(), airline: String(air).split('/')[0].trim(), gate: String(gate).trim(), originalGate: String(gate).trim(), route: route, timestamp: d.getTime(), timeStr: `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`, isNextDay: isNextDay, pairId: pair }; };
                 if (row[m.arrNo] && row[m.arrTime]) { const tm = toMins(row[m.arrTime]); if (tm !== null) app.state.flights.push(createFlight(tm, 'ARR', row[m.arrNo], from, pairId)); }
                 if (row[m.depNo] && row[m.depTime]) { const tm = toMins(row[m.depTime]); if (tm !== null) app.state.flights.push(createFlight(tm, 'DEP', row[m.depNo], to, pairId)); }
             });
@@ -2445,7 +2738,7 @@ const app = {
         // History için yardımcı fonksiyonlar
         pushHistory: () => {
             const snapshot = JSON.stringify({
-                flights: JSON.parse(JSON.stringify(app.state.flights)), // Deep copy
+                flights: app.state.flights,
                 assignments: app.state.assignments,
                 gates: app.state.gates,
                 overrides: app.state.overrides,
@@ -2460,7 +2753,16 @@ const app = {
         undo: () => {
             if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
             if (!app.state.history || app.state.history.length === 0) { app.ui.toast("Geri alınacak işlem yok", "info"); return; }
+            
+            // Fokuslanmış input varsa odağını kaldır, böylece geri alırken ekrandaki geçici yazı state'i ezmez
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+                document.activeElement.blur();
+            }
+            
+            const oldGates = Object.assign({}, app.state.gates);
+            const oldAssignments = Object.assign({}, app.state.assignments);
             const prev = JSON.parse(app.state.history.pop());
+            
             if (prev.flights) app.state.flights = prev.flights;
             app.state.assignments = prev.assignments || {};
             app.state.gates = prev.gates || {};
@@ -2468,6 +2770,42 @@ const app = {
             app.state.completed = prev.completed || [];
             app.state.delayed = prev.delayed || {};
             app.state.timeChanges = prev.timeChanges || {};
+            
+            // Geri alma işleminde kapı veya personel değişmişse bildirim yolla
+            app.state.flights.forEach(flight => {
+                const id = flight.id;
+                const previousGate = oldGates[id] || flight.originalGate || '';
+                const restoredGate = app.state.gates[id] || flight.originalGate || '';
+                const previousStaff = oldAssignments[id];
+                const restoredStaff = app.state.assignments[id];
+                
+                const flightLetters = (flight.flightNo.replace(/[0-9]/g, '').trim() || flight.airline.split('/')[0].trim()).toUpperCase();
+                const flightNumbers = flight.flightNo.replace(/[^0-9]/g, '').trim() || flight.flightNo;
+                const fullFlightNo = `${flightLetters}${flightNumbers}`;
+                
+                // Personel ataması geri alındıysa
+                if (previousStaff !== restoredStaff) {
+                    const gate = restoredGate || previousGate || "Belirsiz";
+                    const titleWithGate = `${fullFlightNo} (Park: ${gate})`;
+                    const directionStr = flight.type === 'ARR' ? 'GELİŞ' : 'GİDİŞ';
+                    
+                    if (previousStaff) {
+                        app.notifications.send(previousStaff, titleWithGate, `❌ ${fullFlightNo} numaralı ${directionStr} uçağının ataması iptal edilmiştir.`);
+                    }
+                    if (restoredStaff) {
+                        app.notifications.send(restoredStaff, titleWithGate, `✅ ${fullFlightNo} numaralı ${directionStr} uçağı tarafınıza atanmıştır. Park pozisyonu: ${gate}`);
+                    }
+                }
+                // Sadece kapı geri alındıysa ve personeli varsa
+                else if (previousGate !== restoredGate) {
+                    if (restoredStaff) {
+                        const titleWithGate = `${fullFlightNo} (Park: ${restoredGate})`;
+                        const msg = `‼️ Uçağınızın park pozisyonu ${restoredGate} olarak değişmiştir ‼️`;
+                        app.notifications.send(restoredStaff, titleWithGate, msg);
+                    }
+                }
+            });
+
             app.data.save(); app.ui.render(); app.ui.renderStaff();
             app.ui.toast("Son işlem geri alındı", "success");
         },
@@ -2494,12 +2832,62 @@ const app = {
         toggleOverride: (id, act) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); if (app.state.overrides[id] === act) delete app.state.overrides[id]; else app.state.overrides[id] = act; app.data.save(); app.ui.render(); },
         toggleComplete: (id) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); if (app.state.completed.includes(id)) app.state.completed = app.state.completed.filter(x => x !== id); else app.state.completed.push(id); app.data.save(); app.ui.render(); app.ui.renderStaff(); },
         toggleDelay: (id) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); if (app.state.delayed[id]) delete app.state.delayed[id]; else app.state.delayed[id] = true; app.data.save(); app.ui.render(); },
-        assignStaff: (id, val) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.logic.pushHistory(); app.state.assignments[id] = val; app.data.save(); app.ui.render(); app.ui.renderStaff(); },
-        updateGate: (id, val) => {
+        assignStaff: (id, val) => {
             if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
+            
+            // Kullanıcı elle küçük harf yazsa bile atama ve bildirimlerin doğru çalışması için BÜYÜK harfe çevir (Özel Türkçe)
+            val = val ? app.trUpper(val.trim()) : val;
+            
+            const oldStaff = app.state.assignments[id] || "";
+            if (oldStaff === (val || "")) return; // Değişiklik yoksa boşuna işlem yapma
+            
             app.logic.pushHistory();
             const flight = app.state.flights.find(f => f.id === id);
+            
+            // Personel değiştiyse bildirim gönder
+            if (flight && oldStaff !== val) {
+                const flightLetters = (flight.flightNo.replace(/[0-9]/g, '').trim() || flight.airline.split('/')[0].trim()).toUpperCase();
+                const flightNumbers = flight.flightNo.replace(/[^0-9]/g, '').trim() || flight.flightNo;
+                const fullFlightNo = `${flightLetters}${flightNumbers}`;
+                const gate = app.state.gates[id] || flight.originalGate || "Belirsiz";
+                const titleWithGate = `${fullFlightNo} (Park: ${gate})`;
+                const directionStr = flight.type === 'ARR' ? 'GELİŞ' : 'GİDİŞ';
+                
+                if (oldStaff) {
+                    app.notifications.send(oldStaff, titleWithGate, `❌ ${fullFlightNo} numaralı ${directionStr} uçağının ataması iptal edilmiştir.`);
+                }
+                if (val) {
+                    app.notifications.send(val, titleWithGate, `✅ ${fullFlightNo} numaralı ${directionStr} uçağı tarafınıza atanmıştır. Park pozisyonu: ${gate}`);
+                }
+            }
+            
+            if (!val) delete app.state.assignments[id];
+            else app.state.assignments[id] = val;
+            
+            app.data.save(); app.ui.render(); app.ui.renderStaff();
+        },
+        updateGate: (id, val) => {
+            if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; }
+            const flight = app.state.flights.find(f => f.id === id);
             const oldGate = app.state.gates[id] || (flight ? flight.originalGate : '');
+            
+            if (oldGate === val) return; // Değişiklik yoksa boşuna işlem yapma
+            
+            app.logic.pushHistory();
+            
+            // Eğer değer gerçekten değişiyorsa ve personeli varsa bildirim gönder
+            if (flight && oldGate !== val) {
+                const assignedStaff = app.state.assignments[id];
+                if (assignedStaff) {
+                    const flightLetters = (flight.flightNo.replace(/[0-9]/g, '').trim() || flight.airline.split('/')[0].trim()).toUpperCase();
+                    const flightNumbers = flight.flightNo.replace(/[^0-9]/g, '').trim() || flight.flightNo;
+                    const fullFlightNo = `${flightLetters}${flightNumbers}`;
+                    const titleWithGate = `${fullFlightNo} (Park: ${val})`;
+                    const msg = `‼️ Uçağınızın park pozisyonu ${val} olarak değişmiştir ‼️`;
+                    app.notifications.send(assignedStaff, titleWithGate, msg);
+                }
+            }
+
             app.state.gates[id] = val;
             // Geçmişe kaydet
             app.logic.logHistory(id, 'Kapı', oldGate, val);
@@ -2511,6 +2899,16 @@ const app = {
                     app.state.gates[paired.id] = val;
                     app.logic.logHistory(paired.id, 'Kapı', oldPairedGate, val);
                     app.ui.toast(`Bağlı ${paired.type === 'ARR' ? 'iniş' : 'kalkış'} da güncellendi`, 'info');
+                    
+                    // Bağlı uçuşun ayrı bir personeli varsa ona da gönder
+                    const pairedStaff = app.state.assignments[paired.id];
+                    if (pairedStaff && pairedStaff !== app.state.assignments[id] && oldPairedGate !== val) {
+                        const pLetters = (paired.flightNo.replace(/[0-9]/g, '').trim() || paired.airline.split('/')[0].trim()).toUpperCase();
+                        const pNumbers = paired.flightNo.replace(/[^0-9]/g, '').trim() || paired.flightNo;
+                        const pFullNo = `${pLetters}${pNumbers}`;
+                        const pMsg = `‼️ Uçağınızın park pozisyonu ${val} olarak değişmiştir ‼️`;
+                        app.notifications.send(pairedStaff, `${pFullNo} (Park: ${val})`, pMsg);
+                    }
                 }
             }
             app.data.save(); app.ui.render();
@@ -2534,7 +2932,7 @@ const app = {
             const baseDate = app.state.baseDate ? new Date(app.state.baseDate) : new Date();
             const d = new Date(baseDate);
             const mins = h * 60 + m;
-            flight.isNextDay = mins < 360;
+            flight.isNextDay = mins < CONSTANTS.NEXT_DAY_THRESHOLD;
             if (flight.isNextDay) d.setDate(d.getDate() + 1);
             d.setHours(h, m, 0, 0);
             flight.timestamp = d.getTime();
@@ -2571,7 +2969,7 @@ const app = {
             const [h, m] = time.split(':').map(Number);
             const mins = h * 60 + m;
             const baseDate = app.state.baseDate ? new Date(app.state.baseDate) : new Date();
-            const isNextDay = mins < 360;
+            const isNextDay = mins < CONSTANTS.NEXT_DAY_THRESHOLD;
             const d = new Date(baseDate);
             if (isNextDay) d.setDate(d.getDate() + 1);
             d.setHours(h, m, 0, 0);
@@ -2585,11 +2983,17 @@ const app = {
             };
             app.state.flights.push(newFlight);
             app.state.flights.sort((a, b) => a.timestamp - b.timestamp);
-            app.data.save(); app.ui.render(); app.ui.toggleAddFlightModal();
+            app.data.save(); app.ui.render();
+            // Formu temizle
+            document.getElementById('af-flightno').value = '';
+            document.getElementById('af-airline').value = '';
+            document.getElementById('af-route').value = '';
+            document.getElementById('af-gate').value = '';
+            app.ui.toggleAddFlightModal();
             app.ui.toast(`${flightNo} eklendi!`, 'success');
         },
 
-        addStaff: () => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } const v = document.getElementById('newStaffName').value.trim().toUpperCase(); if (v && !app.state.staff.includes(v)) { app.state.staff.push(v); document.getElementById('newStaffName').value = ''; app.ui.renderStaff(); app.data.save(); app.ui.toast("Eklendi", "success"); } },
+        addStaff: () => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } const v = app.trUpper(document.getElementById('newStaffName').value.trim()); if (v && !app.state.staff.includes(v)) { app.state.staff.push(v); document.getElementById('newStaffName').value = ''; app.ui.renderStaff(); app.data.save(); app.ui.toast("Eklendi", "success"); } },
         removeStaff: (s) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.state.staff = app.state.staff.filter(x => x !== s); app.ui.renderStaff(); app.data.save(); },
         analyze: () => {
             const allFlights = app.state.flights; if (!allFlights.length) return;
@@ -2998,60 +3402,71 @@ const app = {
 
     },
     data: {
+        saveQueue: Promise.resolve(),
         // Firestore'a kaydet - SADECE ADMİN + TIMESTAMP KONTROLÜ
-        save: async () => {
-            // Admin değilse kaydetme!
+        save: () => {
             if (!app.isAdmin) {
                 console.log('⚠️ Kullanıcı modunda kayıt yapılamaz');
-                return;
+                return Promise.resolve();
             }
-
-            // Yazma izni kontrolü (visibility lock)
             if (!app.canWrite) {
                 console.log('⚠️ Yazma izni yok - sayfa inaktif');
-                return;
+                return Promise.resolve();
             }
-
-            // Firestore'a kaydet
-            if (typeof db !== 'undefined') {
-                try {
-                    // Önce remote timestamp'ı kontrol et
-                    const doc = await db.collection('appState').doc('main').get();
-                    const remoteTimestamp = doc.exists ? (doc.data().lastUpdated || 0) : 0;
-
-                    // Eğer remote daha yeni ise ve fark 5 saniyeden fazla ise
-                    if (remoteTimestamp > app.state.lastUpdated && (remoteTimestamp - app.state.lastUpdated) > 5000) {
-                        console.log('⚠️ Çakışma tespit edildi! Remote:', remoteTimestamp, 'Local:', app.state.lastUpdated);
-                        app.ui.showConflictWarning(remoteTimestamp);
-                        return; // Kaydetme, kullanıcıya sor
+            const task = async () => {
+                if (typeof db !== 'undefined') {
+                    app._isSaving = true;
+                    try {
+                        const docRef = db.collection('appState').doc('main');
+                        await db.runTransaction(async (transaction) => {
+                            const doc = await transaction.get(docRef);
+                            const remoteTimestamp = doc.exists ? (doc.data().lastUpdated || 0) : 0;
+                            if (remoteTimestamp > app.state.lastUpdated && (remoteTimestamp - app.state.lastUpdated) > 5000) {
+                                throw { type: 'CONFLICT', remoteTimestamp: remoteTimestamp };
+                            }
+                            app.state.lastUpdated = Date.now();
+                            transaction.set(docRef, app.state);
+                        });
+                        const el = document.getElementById('saveStatus');
+                        if (el) {
+                            el.style.opacity = '1';
+                            el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up animate-bounce text-green-400"></i> <span class="text-green-400">SENKRON</span>';
+                            setTimeout(() => el.style.opacity = '0', 2000);
+                        }
+                        console.log('✅ Firestore\'a kaydedildi - Timestamp:', app.state.lastUpdated);
+                    } catch (err) {
+                        if (err && err.type === 'CONFLICT') {
+                            console.log('⚠️ Çakışma tespit edildi!');
+                            app.ui.showConflictWarning(err.remoteTimestamp);
+                            return;
+                        }
+                        console.error('Firestore save error:', err);
+                        app.ui.toast('Senkronizasyon hatası', 'error');
+                    } finally {
+                        app._isSaving = false;
                     }
-
-                    // Timestamp'ı güncelle
-                    app.state.lastUpdated = Date.now();
-
-                    await db.collection('appState').doc('main').set(app.state);
-                    const el = document.getElementById('saveStatus');
-                    if (el) {
-                        el.style.opacity = '1';
-                        el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up animate-bounce text-green-400"></i> <span class="text-green-400">SENKRON</span>';
-                        setTimeout(() => el.style.opacity = '0', 2000);
-                    }
-                    console.log('✅ Firestore\'a kaydedildi - Timestamp:', app.state.lastUpdated);
-                } catch (err) {
-                    console.error('Firestore save error:', err);
-                    app.ui.toast('Senkronizasyon hatası', 'error');
                 }
-            }
+            };
+            app.data.saveQueue = app.data.saveQueue.then(task);
+            return app.data.saveQueue;
         },
 
         // Firestore'dan yükle ve gerçek zamanlı dinle
         load: () => {
+            // Önceki listener'ı temizle (bellek sızıntısı önleme)
+            if (app._unsubscribe) { app._unsubscribe(); app._unsubscribe = null; }
             // Firestore gerçek zamanlı listener - TEK KAYNAK
             if (typeof db !== 'undefined') {
                 // Güçlendirilmiş listener - hem cache hem sunucu değişikliklerini yakala
-                db.collection('appState').doc('main').onSnapshot(
+                app._unsubscribe = db.collection('appState').doc('main').onSnapshot(
                     { includeMetadataChanges: true }, // Tüm değişiklikleri yakala
                     (doc) => {
+                        // Kayıt işlemi sürerken gelen ara güncellemeleri yoksay (Titreşim ve veri silinmesini engeller)
+                        if (app._isSaving) {
+                            console.log("Kaydetme işlemi sürüyor, ekran titremesini önlemek için snapshot yoksayıldı.");
+                            return;
+                        }
+                        
                         const source = doc.metadata.fromCache ? "📦 CACHE" : "☁️ SUNUCU";
                         const hasPendingWrites = doc.metadata.hasPendingWrites;
 
@@ -3123,7 +3538,7 @@ const app = {
                     (err) => {
                         console.error('❌ Firestore listener error:', err);
                         app.ui.toast('Bağlantı hatası - yeniden deniyor...', 'error');
-                        // 5 saniye sonra yeniden bağlan
+                        app._unsubscribe = null;
                         setTimeout(() => app.data.load(), 5000);
                     }
                 );
@@ -3134,7 +3549,32 @@ const app = {
         },
 
         saveToJson: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(app.state)], { type: 'application/json' })); a.download = `backup_${Date.now()}.json`; a.click(); },
-        loadFromJson: (input) => { const f = input.files[0]; if (!f) return; const r = new FileReader(); r.onload = (e) => { app.state = JSON.parse(e.target.result); if (!app.state.delayed) app.state.delayed = {}; app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel(); app.data.save(); app.ui.toast("Yedek Yüklendi", "success"); }; r.readAsText(f); },
+        loadFromJson: (input) => {
+            const f = input.files[0]; if (!f) return;
+            const r = new FileReader();
+            r.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (!parsed || !Array.isArray(parsed.flights)) {
+                        app.ui.toast('Geçersiz yedek dosyası', 'error');
+                        return;
+                    }
+                    app.state = parsed;
+                    if (!app.state.delayed) app.state.delayed = {};
+                    if (!app.state.timeChanges) app.state.timeChanges = {};
+                    if (!app.state.history) app.state.history = [];
+                    if (!app.state.flightHistory) app.state.flightHistory = {};
+                    if (!app.state.lastUpdated) app.state.lastUpdated = Date.now();
+                    app.ui.render(); app.ui.renderStaff(); app.ui.updateHeaderShiftLabel();
+                    app.data.save();
+                    app.ui.toast('Yedek Yüklendi', 'success');
+                } catch (err) {
+                    console.error('JSON parse hatası:', err);
+                    app.ui.toast('Yedek dosyası okunamadı', 'error');
+                }
+            };
+            r.readAsText(f);
+        },
         reset: async () => { await airLabs.clearCache(); app.ui.smartReset(); }
     }
 };

@@ -1,5 +1,39 @@
-// Follow-Me Ops - Service Worker v20.0 - Smart Excel Column Detection v2
-const CACHE_NAME = 'fm-ops-v20';
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+
+// Firebase Configuration for SW
+const firebaseConfig = {
+    apiKey: "AIzaSyCPWMCjCp45PiTZ-VgskEszobpBzUFaOBk",
+    authDomain: "followme-ops.firebaseapp.com",
+    projectId: "followme-ops",
+    storageBucket: "followme-ops.firebasestorage.app",
+    messagingSenderId: "881822008",
+    appId: "1:881822008:web:493ddb46ff7c56e2ea59cd"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+    console.log('[firebase-messaging-sw.js] Arka plan bildirimi (Data) alındı ', payload);
+    
+    const notificationTitle = payload.data.flightNo || "Yeni Görev";
+    const notificationOptions = {
+        body: payload.data.message || "Yeni bir bildiriminiz var.",
+        icon: './icon-192.png',
+        badge: './icon-192.png',
+        vibrate: [300, 100, 300, 100, 300, 100, 300], // Uzun ve belirgin titreşim
+        requireInteraction: true, // Ekranda asılı kalsın
+        tag: `flight-${payload.data.flightNo}`,
+        data: payload.data
+    };
+
+    self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Follow-Me Ops - Service Worker v25.0 - Push Notifications
+const CACHE_NAME = 'fm-ops-v46';
 const urlsToCache = [
     './',
     './index.html',
@@ -9,7 +43,6 @@ const urlsToCache = [
     './icon-512.png'
 ];
 
-// Install event - cache files
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -21,14 +54,12 @@ self.addEventListener('install', event => {
     );
 });
 
-// Activate event - cleanup old caches
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(
                 cacheNames.map(cacheName => {
                     if (cacheName !== CACHE_NAME) {
-                        console.log('🗑️ Deleting old cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
@@ -37,22 +68,16 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Fetch event - network first, fallback to cache
 self.addEventListener('fetch', event => {
-    // Skip non-GET requests
     if (event.request.method !== 'GET') return;
-
-    // Skip Firebase and external requests
     if (event.request.url.includes('firebase') ||
         event.request.url.includes('googleapis') ||
         event.request.url.includes('gstatic')) {
         return;
     }
-
     event.respondWith(
         fetch(event.request)
             .then(response => {
-                // Clone and cache successful responses
                 if (response.status === 200) {
                     const responseClone = response.clone();
                     caches.open(CACHE_NAME).then(cache => {
@@ -62,8 +87,19 @@ self.addEventListener('fetch', event => {
                 return response;
             })
             .catch(() => {
-                // Network failed, try cache
                 return caches.match(event.request);
             })
+    );
+});
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    event.waitUntil(
+        clients.matchAll({ type: 'window' }).then(clientList => {
+            for (const client of clientList) {
+                if ('focus' in client) return client.focus();
+            }
+            if (clients.openWindow) return clients.openWindow('/');
+        })
     );
 });
