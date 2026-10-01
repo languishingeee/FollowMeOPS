@@ -343,6 +343,7 @@ const app = {
         lastUpdated: 0 // Son güncelleme timestamp'ı - çakışma kontrolü için
     },
     currentUser: null, // Giriş yapan kullanıcının kimliği: { name: 'AHMET Y.', role: 'user' }
+    _dirty: false, // Veri değişikliği bayrağı — auto-save optimizasyonu için
     notifications: {
         _listener: null,
         _pendingFlightId: null,
@@ -559,7 +560,7 @@ const app = {
             }
         });
 
-        setInterval(() => { if (app.isAdmin && app.canWrite && app.state.flights.length > 0) app.data.save(); }, CONSTANTS.AUTO_SAVE_INTERVAL);
+        setInterval(() => { if (app.isAdmin && app.canWrite && app.state.flights.length > 0 && app._dirty) app.data.save(); }, CONSTANTS.AUTO_SAVE_INTERVAL);
 
         // SW Kaydı index.html üzerinden yürütülüyor (Bypass Cache için)
     },
@@ -2737,6 +2738,7 @@ const app = {
         setShift: (s) => { if (!app.isAdmin) { app.ui.toast('Admin yetkisi gerekli', 'error'); return; } app.ui.showShiftConfig(); }, // Re-opens wizard
         // History için yardımcı fonksiyonlar
         pushHistory: () => {
+            app._dirty = true; // State değişecek — auto-save için işaretle
             const snapshot = JSON.stringify({
                 flights: app.state.flights,
                 assignments: app.state.assignments,
@@ -3434,6 +3436,7 @@ const app = {
                             setTimeout(() => el.style.opacity = '0', 2000);
                         }
                         console.log('✅ Firestore\'a kaydedildi - Timestamp:', app.state.lastUpdated);
+                        app._dirty = false; // Başarılı kayıt — auto-save tekrar yapmayacak
                     } catch (err) {
                         if (err && err.type === 'CONFLICT') {
                             console.log('⚠️ Çakışma tespit edildi!');
@@ -3459,7 +3462,6 @@ const app = {
             if (typeof db !== 'undefined') {
                 // Güçlendirilmiş listener - hem cache hem sunucu değişikliklerini yakala
                 app._unsubscribe = db.collection('appState').doc('main').onSnapshot(
-                    { includeMetadataChanges: true }, // Tüm değişiklikleri yakala
                     (doc) => {
                         // Kayıt işlemi sürerken gelen ara güncellemeleri yoksay (Titreşim ve veri silinmesini engeller)
                         if (app._isSaving) {

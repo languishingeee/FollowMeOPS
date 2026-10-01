@@ -33,7 +33,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Follow-Me Ops - Service Worker v25.0 - Push Notifications
-const CACHE_NAME = 'fm-ops-v46';
+const CACHE_NAME = 'fm-ops-v51';
 const urlsToCache = [
     './',
     './index.html',

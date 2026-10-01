@@ -68,7 +68,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- App Styles - External for caching -->
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=50">
 
     <!-- Libraries - deferred for faster FCP -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js" defer></script>
@@ -827,10 +827,10 @@
         <datalist id="staffOptions"></datalist>
 
 
-        <script src="app.js?v=46"></script>
+        <script src="app.js?v=51"></script>
         <script>
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js?v=46').then(reg => {
+                navigator.serviceWorker.register('./sw.js?v=51').then(reg => {
                     reg.update(); // Her açılışta güncellemeyi zorla
                 });
             }
